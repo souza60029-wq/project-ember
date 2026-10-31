@@ -7,9 +7,8 @@ func _init():
 	print("=== Simulando COLISAO REAL POR DISTANCIA ===")
 
 	var kyo = Personagem.new("Kyo", 0.0)
-	var ash = Personagem.new("Ash", 50.0)  # Ash comeca perto do Kyo
+	var ash = Personagem.new("Ash", 40.0)  # Ash comeca proximo o suficiente para sobrepor
 
-	# Hitbox do golpe do Kyo: comeca 20px a frente dele, vai 30px de largura, 20 de altura
 	var hitbox_kyo = Caixa.new(20, 40, 30, 20)
 	kyo.iniciar_golpe(3, 2, 8, hitbox_kyo)
 
@@ -20,7 +19,7 @@ func _init():
 			var hurt_ash = ash.obter_hurtbox_absoluta()
 			if Caixa.colidem(h, hurt_ash):
 				print("COLISAO! Golpe do Kyo acertou o Ash (estavam perto o suficiente)")
-				ash.receber_ataque(3, 15, 80.0)  # empurra o Ash 80px pra longe
+				ash.receber_ataque(3, 15, 80.0)
 			else:
 				print("Golpe do Kyo nao alcancou o Ash (fora de alcance)")
 		kyo.avancar_frame()
@@ -45,7 +44,7 @@ func _init():
 	print("Posicao final do Ash: %.0f" % ash.pos_x)
 	print("Vida final do Ash: %d" % ash.vida)
 
-	if ash.pos_x == 130.0 and ash.vida == 85:
+	if ash.pos_x == 120.0 and ash.vida == 85:
 		print("RESULTADO: SUCESSO - colisao por distancia funcionando corretamente!")
 	else:
 		print("RESULTADO: FALHOU")
