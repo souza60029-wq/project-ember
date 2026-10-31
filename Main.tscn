@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Main.gd" id="1"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1")
+
+[node name="Chao" type="ColorRect" parent="."]
+offset_left = 0.0
+offset_top = 480.0
+offset_right = 960.0
+offset_bottom = 540.0
+color = Color(0.2, 0.2, 0.2, 1)
+
+[node name="Personagem1" type="ColorRect" parent="."]
+offset_left = 200.0
+offset_top = 380.0
+offset_right = 260.0
+offset_bottom = 480.0
+color = Color(1, 0.5, 0, 1)
+
+[node name="Personagem2" type="ColorRect" parent="."]
+offset_left = 700.0
+offset_top = 380.0
+offset_right = 760.0
+offset_bottom = 480.0
+color = Color(0, 0.5, 1, 1)
