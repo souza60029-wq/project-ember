@@ -1,0 +1,10 @@
+name: Teste Inicial
+
+on: push
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dizer oi
+        run: echo "Funcionou! O pipeline esta rodando certinho."
