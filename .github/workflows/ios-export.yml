@@ -1,0 +1,35 @@
+name: Export iOS
+
+on: push
+
+jobs:
+  exportar_ios:
+    runs-on: macos-latest
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Baixar o Godot (macOS)
+        run: |
+          wget https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_macos.universal.zip
+          unzip Godot_v4.2.2-stable_macos.universal.zip
+          chmod +x Godot.app/Contents/MacOS/Godot
+
+      - name: Baixar templates de exportacao
+        run: |
+          wget https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_export_templates.tpz
+          mkdir -p ~/Library/Application\ Support/Godot/export_templates/4.2.2.stable
+          unzip -q Godot_v4.2.2-stable_export_templates.tpz
+          mv templates/* ~/Library/Application\ Support/Godot/export_templates/4.2.2.stable/
+
+      - name: Exportar projeto Xcode (sem compilar ainda)
+        run: |
+          mkdir -p build/ios
+          ./Godot.app/Contents/MacOS/Godot --headless --export-release "iOS" build/ios/project.ipa
+          ls -la build/ios
+
+      - name: Enviar projeto Xcode gerado como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: projeto-xcode-ios
+          path: build/ios
