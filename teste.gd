@@ -1,12 +1,13 @@
 extends SceneTree
 
+const Personagem = preload("res://Personagem.gd")
+
 func _init():
 	print("=== Simulando combate frame a frame ===")
 
 	var kyo = Personagem.new("Kyo")
 	var iori = Personagem.new("Iori")
 
-	# Kyo usa um golpe com 5 frames de startup, 3 de active, 10 de recovery
 	kyo.iniciar_golpe(5, 3, 10)
 
 	for frame in range(20):
