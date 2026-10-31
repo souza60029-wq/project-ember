@@ -1,4 +1,4 @@
-name: Teste Inicial
+name: Teste Godot
 
 on: push
 
@@ -6,5 +6,15 @@ jobs:
   testar:
     runs-on: ubuntu-latest
     steps:
-      - name: Dizer oi
-        run: echo "Funcionou! O pipeline esta rodando certinho."
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Baixar o Godot
+        run: |
+          wget https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_linux.x86_64.zip
+          unzip Godot_v4.2.2-stable_linux.x86_64.zip
+          chmod +x Godot_v4.2.2-stable_linux.x86_64
+          mv Godot_v4.2.2-stable_linux.x86_64 godot
+
+      - name: Rodar teste de combate
+        run: ./godot --headless --script teste.gd
