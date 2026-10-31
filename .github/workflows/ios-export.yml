@@ -28,8 +28,30 @@ jobs:
           ./Godot.app/Contents/MacOS/Godot --headless --verbose --export-debug "iOS" build/ios/project
           ls -la build/ios
 
+      - name: Compilar o projeto Xcode (sem assinatura)
+        run: |
+          xcodebuild -project build/ios/project.xcodeproj \
+            -scheme project \
+            -configuration Release \
+            -sdk iphoneos \
+            -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            -derivedDataPath build/ios/DerivedData \
+            build
+          echo "=== Procurando o .app gerado ==="
+          find build/ios/DerivedData -name "*.app" -maxdepth 6
+
       - name: Enviar projeto Xcode gerado como artefato
         uses: actions/upload-artifact@v4
         with:
           name: projeto-xcode-ios
           path: build/ios
+
+      - name: Enviar app compilado como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-compilado-ios
+          path: build/ios/DerivedData/Build/Products/Release-iphoneos
