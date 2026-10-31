@@ -1,4 +1,3 @@
-class_name Personagem
 extends RefCounted
 
 enum Estado { PARADO, ATACANDO, APANHANDO }
