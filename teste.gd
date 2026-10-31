@@ -1,21 +1,30 @@
 extends SceneTree
 
 func _init():
-	print("Iniciando teste de combate...")
+	print("=== Simulando combate frame a frame ===")
 
-	var hp_jogador2 = 100
-	var dano_do_golpe = 15
+	var kyo = Personagem.new("Kyo")
+	var iori = Personagem.new("Iori")
 
-	print("Jogador 2 tem %d de vida." % hp_jogador2)
-	print("Jogador 1 aplica um golpe de %d de dano..." % dano_do_golpe)
+	# Kyo usa um golpe com 5 frames de startup, 3 de active, 10 de recovery
+	kyo.iniciar_golpe(5, 3, 10)
 
-	hp_jogador2 -= dano_do_golpe
+	for frame in range(20):
+		print("--- Frame %d ---" % frame)
 
-	print("Jogador 2 agora tem %d de vida." % hp_jogador2)
+		if kyo.esta_no_frame_ativo():
+			print("O golpe do Kyo esta ATIVO neste frame!")
+			if iori.estado != Personagem.Estado.APANHANDO:
+				iori.levar_dano(15)
 
-	if hp_jogador2 == 85:
-		print("RESULTADO: SUCESSO - o calculo de dano esta correto!")
+		kyo.avancar_frame()
+
+	print("=== Fim da simulacao ===")
+	print("Vida final do Iori: %d" % iori.vida)
+
+	if iori.vida == 85:
+		print("RESULTADO: SUCESSO - sistema de frame data funcionando!")
 	else:
-		print("RESULTADO: FALHOU - algo esta errado.")
+		print("RESULTADO: FALHOU")
 
 	quit()
