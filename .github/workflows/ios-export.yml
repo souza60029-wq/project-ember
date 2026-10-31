@@ -25,7 +25,7 @@ jobs:
       - name: Exportar projeto Xcode (sem compilar ainda)
         run: |
           mkdir -p build/ios
-          ./Godot.app/Contents/MacOS/Godot --headless --verbose --export-release "iOS" build/ios/project
+          ./Godot.app/Contents/MacOS/Godot --headless --verbose --export-debug "iOS" build/ios/project
           ls -la build/ios
 
       - name: Enviar projeto Xcode gerado como artefato
