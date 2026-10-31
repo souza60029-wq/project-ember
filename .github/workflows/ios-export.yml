@@ -44,14 +44,26 @@ jobs:
           echo "=== Procurando o .app gerado ==="
           find build/ios/DerivedData -name "*.app" -maxdepth 6
 
-      - name: Enviar projeto Xcode gerado como artefato
-        uses: actions/upload-artifact@v4
-        with:
-          name: projeto-xcode-ios
-          path: build/ios
+      - name: Instalar ldid
+        run: |
+          brew install ldid
 
-      - name: Enviar app compilado como artefato
+      - name: Fakesign e empacotar em .ipa
+        run: |
+          APP_PATH="build/ios/DerivedData/Build/Products/Release-iphoneos/project.app"
+          echo "=== Assinando executavel interno com ldid ==="
+          ldid -S "$APP_PATH/project"
+          echo "=== Montando estrutura Payload ==="
+          mkdir -p build/ipa/Payload
+          cp -R "$APP_PATH" build/ipa/Payload/
+          cd build/ipa
+          zip -r -y ../../ProjectEmber.ipa Payload
+          cd ../..
+          echo "=== Resultado final ==="
+          ls -la ProjectEmber.ipa
+
+      - name: Enviar IPA final como artefato
         uses: actions/upload-artifact@v4
         with:
-          name: app-compilado-ios
-          path: build/ios/DerivedData/Build/Products/Release-iphoneos
+          name: ProjectEmber-ipa
+          path: ProjectEmber.ipa
