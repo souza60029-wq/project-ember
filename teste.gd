@@ -4,49 +4,39 @@ const Personagem = preload("res://Personagem.gd")
 const Caixa = preload("res://Caixa.gd")
 
 func _init():
-	print("=== Simulando COLISAO REAL POR DISTANCIA ===")
+	print("=== TESTE 1: Esquiva da imunidade total ===")
+	var ash = Personagem.new("Ash")
+	ash.iniciar_esquiva()
+	ash.receber_ataque(5, 20)  # deve ser ignorado, esta imune
+	print("Vida do Ash apos ataque durante esquiva: %d (esperado 100)" % ash.vida)
 
-	var kyo = Personagem.new("Kyo", 0.0)
-	var ash = Personagem.new("Ash", 40.0)  # Ash comeca proximo o suficiente para sobrepor
+	print("\n=== TESTE 2: Combo com escala de dano ===")
+	var kyo = Personagem.new("Kyo")
+	var iori = Personagem.new("Iori")
+	kyo.iniciar_golpe(1, 1, 1, null, Personagem.Forca.FRACO)
+	iori.receber_ataque(1, 20)  # hit 1: 100% -> 20 dano
+	kyo.iniciar_golpe(1, 1, 1, null, Personagem.Forca.FRACO)
+	iori.receber_ataque(1, 20)  # hit 2: 85% -> 17 dano
+	kyo.iniciar_golpe(1, 1, 1, null, Personagem.Forca.FRACO)
+	iori.receber_ataque(1, 20)  # hit 3: 70% -> 14 dano
+	print("Vida final do Iori: %d (esperado 49)" % iori.vida)
 
-	var hitbox_kyo = Caixa.new(20, 40, 30, 20)
-	kyo.iniciar_golpe(3, 2, 8, hitbox_kyo)
+	print("\n=== TESTE 3: Regra de cancelamento por forca ===")
+	var rock = Personagem.new("Rock")
+	var sucesso1 = rock.iniciar_golpe(1, 5, 5, null, Personagem.Forca.FORTE)
+	var sucesso2 = rock.iniciar_golpe(1, 1, 1, null, Personagem.Forca.FRACO)  # tentando cancelar forte->fraco, DEVE FALHAR
+	print("Cancelar FORTE para FRACO foi permitido? %s (esperado false)" % sucesso2)
 
-	for frame in range(6):
-		print("--- Frame %d ---" % frame)
-		if kyo.esta_no_frame_ativo():
-			var h = kyo.obter_hitbox_absoluta()
-			var hurt_ash = ash.obter_hurtbox_absoluta()
-			if Caixa.colidem(h, hurt_ash):
-				print("COLISAO! Golpe do Kyo acertou o Ash (estavam perto o suficiente)")
-				ash.receber_ataque(3, 15, 80.0)
-			else:
-				print("Golpe do Kyo nao alcancou o Ash (fora de alcance)")
-		kyo.avancar_frame()
+	print("\n=== TESTE 4: Bloqueio de cancelamento para COMANDO ===")
+	var ralf = Personagem.new("Ralf")
+	ralf.iniciar_golpe(1, 5, 5, null, Personagem.Forca.FRACO)
+	var sucesso3 = ralf.iniciar_golpe(1, 1, 1, null, Personagem.Forca.COMANDO, false, false)  # flag desligada, DEVE FALHAR
+	print("Cancelar para COMANDO sem flag foi permitido? %s (esperado false)" % sucesso3)
 
-	print("\n-- Agora o Ash esta longe (pos_x=%.0f). Kyo tenta outro golpe curto --" % ash.pos_x)
-
-	var hitbox_kyo2 = Caixa.new(20, 40, 30, 20)
-	kyo.iniciar_golpe(3, 2, 8, hitbox_kyo2)
-
-	for frame in range(6):
-		print("--- Frame %d ---" % frame)
-		if kyo.esta_no_frame_ativo():
-			var h = kyo.obter_hitbox_absoluta()
-			var hurt_ash = ash.obter_hurtbox_absoluta()
-			if Caixa.colidem(h, hurt_ash):
-				print("COLISAO! Golpe alcancou mesmo longe (ISSO SERIA UM BUG)")
-			else:
-				print("Golpe NAO alcancou - distancia fez a fisica correta barrar o combo")
-		kyo.avancar_frame()
-
-	print("\n=== Fim da simulacao ===")
-	print("Posicao final do Ash: %.0f" % ash.pos_x)
-	print("Vida final do Ash: %d" % ash.vida)
-
-	if ash.pos_x == 120.0 and ash.vida == 85:
-		print("RESULTADO: SUCESSO - colisao por distancia funcionando corretamente!")
+	print("\n=== RESULTADO GERAL ===")
+	if ash.vida == 100 and iori.vida == 49 and sucesso2 == false and sucesso3 == false:
+		print("SUCESSO TOTAL - todas as 4 mecanicas validadas!")
 	else:
-		print("RESULTADO: FALHOU")
+		print("FALHOU em algum ponto, revisar acima")
 
 	quit()
