@@ -60,8 +60,9 @@ const CAMPOS := [
 	{"k": "hb_h", "rot": "Hitbox H", "tipo": "hb", "chave": "h", "min": 1.0, "max": 300.0, "passo": 5.0},
 ]
 
-var p1 = null
-var p2 = null
+# Criados já na declaração: existem desde a instanciação, antes de _ready().
+var p1 = Personagem.new()
+var p2 = Personagem.new()
 var nome_p1: String = NOME_PADRAO
 var editando := false
 var ed_golpes: Array = []
@@ -80,11 +81,16 @@ var le_pers: LineEdit = null
 
 # ---------- Ciclo de vida ----------
 
-func _ready() -> void:
-	p2 = Personagem.new()
+func _init() -> void:
+	# Feito em _init (e não em _ready) para que p1 e p2 nunca sejam nil,
+	# mesmo que o nó seja usado antes de entrar na árvore de cena.
 	p2.definir_golpes(Personagem.golpes_padrao_ash())
-	p1 = Personagem.new()
+	p1.definir_golpes(Personagem.golpes_padrao_ash())
+	p1.oponente = p2
+	p2.oponente = p1
 	_carregar()
+
+func _ready() -> void:
 	_criar_campos_editor()
 	_reiniciar_luta()
 
