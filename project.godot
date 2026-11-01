@@ -11,6 +11,9 @@ config/features=PackedStringArray("4.2")
 
 window/size/viewport_width=960
 window/size/viewport_height=540
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation="landscape"
 
 [rendering]
 
