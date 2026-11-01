@@ -1,97 +1,132 @@
 extends SceneTree
 
 const Personagem = preload("res://Personagem.gd")
-const Caixa = preload("res://Caixa.gd")
 
-func _init():
-	var resultados = []
+var falhas: int = 0
 
-	print("=== TESTE A: Golpe anti-chao so acerta CAIDO, nao LEVANTANDO ===")
-	var ash = Personagem.new("Ash")
-	ash.iniciar_queda(true)
-	ash.receber_ataque(1, 10, 0, false, false)  # sem flag, nao deve acertar
-	var teste_a1 = (ash.vida == 100)
-	ash.receber_ataque(1, 10, 0, false, true)   # com flag, deve acertar
-	var teste_a2 = (ash.vida == 90)
-	ash.tentar_recuperacao_rapida()
-	ash.receber_ataque(1, 10, 0, false, true)   # levantando = invencivel, nao deve acertar
-	var teste_a3 = (ash.vida == 90)
-	resultados.append(teste_a1 and teste_a2 and teste_a3)
-	print("Teste A resultado: %s\n" % resultados[-1])
-
-	print("=== TESTE B: Blow Off impede recuperacao rapida ===")
-	var kyo = Personagem.new("Kyo")
-	kyo.receber_ataque(1, 15, 0, true, false)  # blow off
-	var teste_b1 = (kyo.estado == Personagem.Estado.CAINDO and not kyo.pode_recuperar_queda)
-	var conseguiu_recuperar = kyo.tentar_recuperacao_rapida()
-	var teste_b2 = (conseguiu_recuperar == false)
-	resultados.append(teste_b1 and teste_b2)
-	print("Teste B resultado: %s\n" % resultados[-1])
-
-	print("=== TESTE C: Guard Cancel Blow Back (custa barra, da invencibilidade) ===")
-	var iori = Personagem.new("Iori")
-	iori.estado = Personagem.Estado.BLOQUEANDO
-	var hitbox_gc = Caixa.new(20, 40, 30, 20)
-	var falhou_sem_barra = iori.tentar_guard_cancel(hitbox_gc, 2, 3, 10)
-	var teste_c1 = (falhou_sem_barra == false)
-	iori.barra.ganhar(100.0)
-	iori.estado = Personagem.Estado.BLOQUEANDO
-	var conseguiu_gc = iori.tentar_guard_cancel(hitbox_gc, 2, 3, 10)
-	iori.avancar_frame()
-	iori.avancar_frame()
-	iori.receber_ataque(1, 20)  # deveria ser ignorado, esta invencivel no golpe
-	var teste_c2 = (conseguiu_gc and iori.vida == 100)
-	resultados.append(teste_c1 and teste_c2)
-	print("Teste C resultado: %s\n" % resultados[-1])
-
-	print("=== TESTE D: Pulo normal vs sombra, janela de defesa aerea ===")
-	var ralf = Personagem.new("Ralf")
-	ralf.iniciar_pulo("normal", "normal")
-	var teste_d1 = (ralf.estado == Personagem.Estado.PULO_PREPARANDO)
-	for i in range(4): ralf.avancar_frame()
-	var teste_d2 = (ralf.estado == Personagem.Estado.NO_AR)
-	var teste_d3 = (ralf.esta_na_janela_defesa_aerea() == false)  # frame 0 do ar, inicio ainda nao
-	for i in range(10): ralf.avancar_frame()
-	var teste_d4 = (ralf.esta_na_janela_defesa_aerea() == true)  # meio do pulo
-
-	var king = Personagem.new("King")
-	king.iniciar_pulo("sombra", "normal")
-	var teste_d5 = (king.estado == Personagem.Estado.NO_AR)  # sombra pula direto, sem preparo
-
-	resultados.append(teste_d1 and teste_d2 and teste_d3 and teste_d4 and teste_d5)
-	print("Teste D resultado: %s\n" % resultados[-1])
-
-	print("=== TESTE E: Golpe que exige estar no ar ===")
-	var rock = Personagem.new("Rock")
-	var hitbox_aereo = Caixa.new(10, 10, 20, 20)
-	var falhou_no_chao = rock.iniciar_golpe(2, 2, 5, hitbox_aereo, Personagem.Forca.FRACO, false, false, -1, 0, 0, false, false, false, true)
-	var teste_e1 = (falhou_no_chao == false)
-	rock.iniciar_pulo("normal", "normal")
-	for i in range(4): rock.avancar_frame()  # agora no ar
-	var conseguiu_no_ar = rock.iniciar_golpe(2, 2, 5, hitbox_aereo, Personagem.Forca.FRACO, false, false, -1, 0, 0, false, false, false, true)
-	var teste_e2 = (conseguiu_no_ar == true)
-	resultados.append(teste_e1 and teste_e2)
-	print("Teste E resultado: %s\n" % resultados[-1])
-
-	print("=== TESTE F: Golpe que exige charge ===")
-	var ash2 = Personagem.new("Ash2")
-	var hitbox_charge = Caixa.new(10, 10, 20, 20)
-	var falhou_sem_charge = ash2.iniciar_golpe(2, 2, 5, hitbox_charge, Personagem.Forca.ESPECIAL, true, false, -1, 0, 0, false, false, false, false, 30)
-	var teste_f1 = (falhou_sem_charge == false)
-	ash2.segurando_direcao_frames = 35
-	var conseguiu_com_charge = ash2.iniciar_golpe(2, 2, 5, hitbox_charge, Personagem.Forca.ESPECIAL, true, false, -1, 0, 0, false, false, false, false, 30)
-	var teste_f2 = (conseguiu_com_charge == true)
-	resultados.append(teste_f1 and teste_f2)
-	print("Teste F resultado: %s\n" % resultados[-1])
-
-	print("=== RESULTADO FINAL ===")
-	var tudo_ok = true
-	for r in resultados:
-		if r == false:
-			tudo_ok = false
-	if tudo_ok:
-		print("SUCESSO TOTAL - TODAS AS MECANICAS NOVAS VALIDADAS!")
+func check(cond: bool, msg: String) -> void:
+	if cond:
+		print("  OK    ", msg)
 	else:
-		print("FALHOU em pelo menos um teste - revisar resultados acima: %s" % str(resultados))
+		print("  FALHA ", msg)
+		falhas += 1
 
-	quit()
+func novo(direita: bool = true):
+	return Personagem.new("Teste", Vector2(300, 480), direita)
+
+func _init() -> void:
+	print("=== TESTES DA ENGINE ===")
+	teste_antichao()
+	teste_blowoff()
+	teste_guard_cancel()
+	teste_pulo_sombra()
+	teste_golpe_so_ar()
+	teste_carga()
+	teste_hit_unico()
+	teste_bloqueio()
+	teste_json()
+	if falhas == 0:
+		print("SUCESSO TOTAL - ENGINE VALIDADA!")
+		quit(0)
+	else:
+		print("TOTAL DE FALHAS: ", falhas)
+		quit(1)
+
+func teste_antichao() -> void:
+	print("A. Anti-chao so acerta CAIDO")
+	var p = novo()
+	var ac = Personagem.normalizar_golpe({"antichao": true})
+	var normal = Personagem.normalizar_golpe({})
+	p.estado = Personagem.Estado.CAIDO
+	check(p.pode_ser_atingido_por(ac), "anti-chao acerta CAIDO")
+	check(not p.pode_ser_atingido_por(normal), "golpe normal nao acerta CAIDO")
+	p.estado = Personagem.Estado.GOLPEADO
+	check(not p.pode_ser_atingido_por(ac), "anti-chao nao acerta GOLPEADO")
+	p.estado = Personagem.Estado.LEVANTANDO
+	p.invulneravel = true
+	check(not p.pode_ser_atingido_por(ac), "anti-chao nao acerta LEVANTANDO invulneravel")
+
+func teste_blowoff() -> void:
+	print("B. Blow Off gera knockdown sem recuperacao")
+	var p = novo()
+	p.receber_golpe(Personagem.normalizar_golpe({"blowoff": true, "dano": 12.0}))
+	check(p.estado == Personagem.Estado.CAIDO, "blow off derruba (CAIDO)")
+	check(p.vida.valor == 88.0, "dano aplicado (100 -> 88)")
+	p.atualizar(Vector2.ZERO, {"ROLL": true})
+	check(p.estado == Personagem.Estado.CAIDO, "roll nao recupera blow off")
+	check(p.knockdown_sem_recuperacao, "flag de knockdown sem recuperacao ativa")
+
+func teste_guard_cancel() -> void:
+	print("C. Guard Cancel custa 50 e da invulnerabilidade")
+	var p = novo()
+	p.energia.valor = 300.0
+	p.estado = Personagem.Estado.DEFENDENDO
+	p.atualizar(Vector2(-1, 0), {"CD": true})
+	check(p.energia.valor == 250.0, "custo 50 (300 -> 250)")
+	check(p.estado == Personagem.Estado.ATACANDO, "entra em ataque")
+	check(p.invulneravel, "invulneravel durante guard cancel")
+
+func teste_pulo_sombra() -> void:
+	print("D. Pulo de sombra")
+	var s = novo()
+	for i in 10:
+		s.atualizar(Vector2(0, 1), {})
+	s.atualizar(Vector2(0, -1), {})
+	check(s.estado == Personagem.Estado.PULANDO and s.eh_pulo_sombra, "agachar + cima = pulo de sombra")
+	var n = novo()
+	n.atualizar(Vector2(0, -1), {})
+	check(n.estado == Personagem.Estado.PULANDO and not n.eh_pulo_sombra, "cima sem agachar = pulo normal")
+
+func teste_golpe_so_ar() -> void:
+	print("E. Golpe que exige ar")
+	var chao = novo()
+	chao.golpes = [Personagem.normalizar_golpe({"botao": "LP", "so_ar": true})]
+	chao.atualizar(Vector2.ZERO, {"LP": true})
+	check(chao.estado != Personagem.Estado.ATACANDO, "nao sai no chao")
+	var ar = novo()
+	ar.golpes = [Personagem.normalizar_golpe({"botao": "LP", "so_ar": true})]
+	ar.pos.y = 300.0
+	ar.atualizar(Vector2.ZERO, {"LP": true})
+	check(ar.estado == Personagem.Estado.ATACANDO, "sai no ar")
+
+func teste_carga() -> void:
+	print("F. Carga e prioridade")
+	var sem = novo()
+	sem.atualizar(Vector2.ZERO, {"HP": true})
+	check(sem.golpe_atual.get("nome", "") == "Soco Forte", "HP sem carga = Soco Forte")
+	var com = novo()
+	for i in 40:
+		com.atualizar(Vector2(-1, 0), {})
+	com.atualizar(Vector2(-1, 0), {"HP": true})
+	check(com.golpe_atual.get("nome", "") == "Ventose", "HP com tras 0.66s = Ventose")
+
+func teste_hit_unico() -> void:
+	print("G. Hitbox acerta uma vez por golpe")
+	var p = novo()
+	p.atualizar(Vector2.ZERO, {"LP": true})
+	for i in 4:
+		p.atualizar(Vector2.ZERO, {})
+	check(not p.hitboxes.is_empty(), "hitbox ativa na fase active")
+	p.marcar_acerto(p.golpe_atual)
+	check(p.hitboxes.is_empty(), "hitbox some ao acertar")
+	for i in 3:
+		p.atualizar(Vector2.ZERO, {})
+	check(p.hitboxes.is_empty(), "hitbox nao volta depois do acerto")
+
+func teste_bloqueio() -> void:
+	print("H. Bloqueio")
+	var p = novo()
+	p.estado = Personagem.Estado.DEFENDENDO
+	p.receber_golpe(Personagem.normalizar_golpe({"dano": 20.0}))
+	check(p.vida.valor == 100.0, "bloqueio nao da dano")
+	check(p.estado == Personagem.Estado.GOLPEADO, "bloqueio gera hitstun")
+
+func teste_json() -> void:
+	print("I. Ida e volta JSON")
+	var original = Personagem.golpes_padrao_ash()
+	var txt = JSON.stringify(original)
+	var volta = JSON.parse_string(txt)
+	check(typeof(volta) == TYPE_ARRAY and volta.size() == original.size(), "JSON com mesma quantidade de golpes")
+	var sup = Personagem.normalizar_golpe(volta[7])
+	check(sup.nome == "Pluviose (Super)" and int(sup.startup) == 5, "golpe volta com nome e frames")
+	check(sup.hitbox.w == 70.0, "hitbox volta corretamente")
