@@ -3,462 +3,483 @@ extends Node2D
 const Personagem = preload("res://Personagem.gd")
 const Caixa = preload("res://Caixa.gd")
 
-const DT: float = 1.0 / 60.0
+const ARQUIVO_SAVE := "user://personagem.json"
+const DPAD_CENTRO := Vector2(120, 430)
+const DPAD_RAIO := 80.0
+const RAIO_BOTAO := 36.0
+const BOTOES := [
+	["HP", 720.0, 330.0], ["CD", 840.0, 330.0], ["LP", 660.0, 410.0],
+	["HK", 780.0, 410.0], ["LK", 720.0, 490.0], ["ROLL", 860.0, 470.0]
+]
+const BOTAO_EDITOR := Rect2(400, 8, 160, 34)
+const BOTAO_RESET := Rect2(260, 8, 120, 34)
+const JOY_MAPA := [
+	[JOY_BUTTON_X, "LP"], [JOY_BUTTON_A, "LK"], [JOY_BUTTON_Y, "HP"],
+	[JOY_BUTTON_B, "HK"], [JOY_BUTTON_RIGHT_SHOULDER, "CD"], [JOY_BUTTON_LEFT_SHOULDER, "ROLL"]
+]
+const CAMPOS := [
+	["botao", "Botao", "lista", ["LP", "LK", "HP", "HK", "CD"]],
+	["carga", "Comando de carga", "lista", ["", "tras", "baixo"]],
+	["carga_seg", "Tempo de carga (s)", "float", 0.1, 0.1, 2.0],
+	["forca", "Forca (3 = derruba)", "int", 1, 1, 3],
+	["startup", "Startup (frames)", "int", 1, 1, 60],
+	["active", "Active (frames)", "int", 1, 1, 60],
+	["recovery", "Recovery (frames)", "int", 1, 0, 90],
+	["dano", "Dano", "float", 10.0, 0.0, 999.0],
+	["custo", "Custo de barra", "float", 10.0, 0.0, 300.0],
+	["energia_ganha", "Barra ganha (so comando)", "float", 5.0, 0.0, 300.0],
+	["antichao", "Anti-chao", "bool"],
+	["blowoff", "Blow off", "bool"],
+	["so_ar", "So no ar", "bool"],
+	["hb_x", "Hitbox X", "int", 5, -200, 300],
+	["hb_y", "Hitbox Y", "int", 5, -200, 0],
+	["hb_w", "Hitbox W", "int", 5, 1, 300],
+	["hb_h", "Hitbox H", "int", 5, 1, 300]
+]
+const VISIVEIS := 12
+const ED_EXPORTAR := Rect2(540, 8, 130, 34)
+const ED_IMPORTAR := Rect2(680, 8, 130, 34)
+const ED_FECHAR := Rect2(820, 8, 130, 34)
+const ED_NOVO := Rect2(10, 372, 78, 28)
+const ED_COPIA := Rect2(92, 372, 78, 28)
+const ED_APAGA := Rect2(174, 372, 76, 28)
+const ED_SOBE := Rect2(10, 406, 115, 28)
+const ED_DESCE := Rect2(131, 406, 119, 28)
+const ED_PREVIEW := Rect2(620, 52, 330, 250)
 
-# Controles na tela (viewport 960x540)
-const DPAD_CENTRO: Vector2 = Vector2(120, 430)
-const DPAD_RAIO: float = 80.0
-const RAIO_BOTAO: float = 36.0
-const BOTOES = {
-	"HP": Vector2(720, 330),
-	"CD": Vector2(840, 330),
-	"LP": Vector2(660, 410),
-	"HK": Vector2(780, 410),
-	"LK": Vector2(720, 490),
-	"ROLL": Vector2(860, 470),
-}
-const BOTAO_EDITOR: Rect2 = Rect2(400, 8, 160, 34)
+enum Tela { LUTA, EDITOR }
 
-# Editor de golpes
-const LINHAS_ESQ = ["botao", "carga", "carga_seg", "forca", "startup", "active", "recovery", "dano"]
-const LINHAS_DIR = ["custo", "energia_ganha", "antichao", "blowoff", "so_ar", "hit_x", "hit_y", "hit_w", "hit_h"]
-const ROTULOS = {
-	"botao": "Botao", "carga": "Carga", "carga_seg": "Tempo carga (s)", "forca": "Forca (0-3)",
-	"startup": "Startup", "active": "Active", "recovery": "Recovery", "dano": "Dano",
-	"custo": "Custo barra", "energia_ganha": "Barra ganha", "antichao": "Anti-chao",
-	"blowoff": "Blow Off", "so_ar": "So no ar",
-	"hit_x": "Hitbox X", "hit_y": "Hitbox Y", "hit_w": "Hitbox W", "hit_h": "Hitbox H",
-}
-const CICLOS = {"botao": ["LP", "LK", "HP", "HK", "CD"], "carga": ["nenhuma", "tras", "baixo"]}
-const BOOLEANOS = ["antichao", "blowoff", "so_ar"]
-const INTEIROS = ["forca", "startup", "active", "recovery"]
-const NUMEROS = {
-	"carga_seg": [0.1, 0.1, 2.0],
-	"forca": [1, 0, 3],
-	"startup": [1, 1, 60],
-	"active": [1, 1, 60],
-	"recovery": [1, 1, 80],
-	"dano": [0.5, 0.0, 100.0],
-	"custo": [10, 0, 300],
-	"energia_ganha": [5, 0, 100],
-	"hit_x": [5, -200, 200],
-	"hit_y": [5, -200, 50],
-	"hit_w": [5, 5, 200],
-	"hit_h": [5, 5, 200],
-}
+var fonte: Font
+var tela: int = Tela.LUTA
+var dados: Dictionary = {}
+var p1
+var p2
+var toques: Dictionary = {}      # indice do toque -> id ("dpad", "LP", ...)
+var toque_vec: Dictionary = {}   # indice do toque -> Vector2 (so dpad)
+var novos_p1: Array = []
+var novos_p2: Array = []
+var joy_prev: Dictionary = {}
+var ed_sel: int = 0
+var ed_scroll: int = 0
+var ed_msg: String = ""
+var ko_timer: int = 0
+var campo_golpe: LineEdit
+var campo_pers: LineEdit
 
-var p1: Personagem
-var p2: Personagem
-var modo_editor: bool = false
-var editor_idx: int = 0
-var mensagem: String = ""
-var ko_timer: float = 0.0
-var toques: Dictionary = {}
-var anteriores: Dictionary = {0: {}, 1: {}}
+# ---------- Inicialização e dados ----------
 
 func _ready() -> void:
-	p1 = Personagem.new("Ash Crimson", Vector2(250, 480), true)
-	p2 = Personagem.new("Dummy", Vector2(710, 480), false)
+	fonte = ThemeDB.fallback_font
+	dados = _carregar()
+	p1 = Personagem.new()
+	p2 = Personagem.new()
+	campo_golpe = _criar_campo(Vector2(620, 326), _on_nome_golpe)
+	campo_pers = _criar_campo(Vector2(620, 376), _on_nome_pers)
+	_reiniciar_luta()
 
-# ---------- Loop de luta (fixo em 60 frames por segundo) ----------
+func _criar_campo(pos: Vector2, cb: Callable) -> LineEdit:
+	var c := LineEdit.new()
+	c.position = pos
+	c.size = Vector2(330, 30)
+	c.visible = false
+	c.text_changed.connect(cb)
+	add_child(c)
+	return c
 
-func _physics_process(_delta: float) -> void:
-	if modo_editor:
-		queue_redraw()
+func _carregar() -> Dictionary:
+	if FileAccess.file_exists(ARQUIVO_SAVE):
+		var txt: String = FileAccess.get_file_as_string(ARQUIVO_SAVE)
+		var lido: Variant = JSON.parse_string(txt)
+		var d: Dictionary = _validar_personagem(lido)
+		if not d.is_empty():
+			return d
+	return {"nome": "Ash Crimson", "golpes": Personagem.golpes_padrao_ash()}
+
+func _validar_personagem(v: Variant) -> Dictionary:
+	if typeof(v) != TYPE_DICTIONARY:
+		return {}
+	if not v.has("golpes") or typeof(v["golpes"]) != TYPE_ARRAY:
+		return {}
+	var lidos: Array = []
+	for g in v["golpes"]:
+		if typeof(g) == TYPE_DICTIONARY:
+			lidos.append(Personagem.normalizar_golpe(g))
+	if lidos.is_empty():
+		return {}
+	return {"nome": str(v.get("nome", "Personagem")), "golpes": lidos}
+
+func _salvar() -> void:
+	var f := FileAccess.open(ARQUIVO_SAVE, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(dados))
+
+func _reiniciar_luta() -> void:
+	p1.definir_golpes(dados["golpes"])
+	p2.definir_golpes(dados["golpes"])
+	p1.resetar(300.0, true)
+	p2.resetar(660.0, false)
+	p1.oponente = p2
+	p2.oponente = p1
+	ko_timer = 0
+
+# ---------- Toque ----------
+
+func _input(event: InputEvent) -> void:
+	var t := event as InputEventScreenTouch
+	if t != null:
+		var p := _para_tela(t.position)
+		if t.pressed:
+			_toque_inicio(t.index, p)
+		else:
+			_toque_fim(t.index)
 		return
-	if ko_timer > 0.0:
-		ko_timer -= DT
-		if ko_timer <= 0.0:
-			_reiniciar_round()
-		queue_redraw()
+	var d := event as InputEventScreenDrag
+	if d != null:
+		_toque_arrasto(d.index, _para_tela(d.position))
+
+func _para_tela(p: Vector2) -> Vector2:
+	return get_viewport().get_final_transform().affine_inverse() * p
+
+func _toque_inicio(idx: int, p: Vector2) -> void:
+	if tela == Tela.EDITOR:
+		_clique_editor(p)
 		return
-
-	var e1: Dictionary = _entrada(0, true)
-	var e2: Dictionary = _entrada(1, false)
-
-	p1.virado_direita = p1.pos.x <= p2.pos.x
-	p2.virado_direita = p2.pos.x < p1.pos.x
-
-	p1.atualizar(e1.dir, e1.apertados)
-	p2.atualizar(e2.dir, e2.apertados)
-
-	_separar_lutadores()
-	_checar_hit(p1, p2)
-	_checar_hit(p2, p1)
-
-	if p1.vida.valor <= 0.0 or p2.vida.valor <= 0.0:
-		ko_timer = 2.0
-	queue_redraw()
-
-func _reiniciar_round() -> void:
-	p1.resetar(Vector2(250, 480), true)
-	p2.resetar(Vector2(710, 480), false)
-	ko_timer = 0.0
-
-func _separar_lutadores() -> void:
-	var d: float = p2.pos.x - p1.pos.x
-	var minimo: float = 44.0
-	if abs(d) < minimo:
-		var empurrao: float = (minimo - abs(d)) / 2.0
-		var sinal: float = 1.0 if d >= 0.0 else -1.0
-		p1.pos.x -= sinal * empurrao
-		p2.pos.x += sinal * empurrao
-	p1.pos.x = clamp(p1.pos.x, 30.0, 930.0)
-	p2.pos.x = clamp(p2.pos.x, 30.0, 930.0)
-
-func _checar_hit(atk: Personagem, dfn: Personagem) -> void:
-	if atk.hitboxes.is_empty():
+	if BOTAO_EDITOR.has_point(p):
+		_abrir_editor()
 		return
-	var g: Dictionary = atk.golpe_atual
-	for hit in atk.hitboxes:
-		for hurt in dfn.hurtboxes:
-			if Caixa.colidem(hit, atk.pos, atk.virado_direita, hurt, dfn.pos, dfn.virado_direita):
-				if dfn.pode_ser_atingido_por(g):
-					dfn.receber_golpe(g)
-					atk.marcar_acerto(g)
-				return
+	if BOTAO_RESET.has_point(p):
+		_reiniciar_luta()
+		return
+	if p.distance_to(DPAD_CENTRO) <= DPAD_RAIO * 1.3:
+		toques[idx] = "dpad"
+		toque_vec[idx] = _vec_dpad(p)
+		return
+	for b in BOTOES:
+		var c := Vector2(b[1], b[2])
+		if p.distance_to(c) <= RAIO_BOTAO * 1.2:
+			toques[idx] = b[0]
+			novos_p1.append(b[0])
+			return
 
-# ---------- Entrada: toque + gamepad, com borda de aperto ----------
+func _toque_arrasto(idx: int, p: Vector2) -> void:
+	if toques.get(idx, "") == "dpad":
+		toque_vec[idx] = _vec_dpad(p)
 
-func _entrada(joy: int, usa_toque: bool) -> Dictionary:
-	var dir := Vector2.ZERO
-	if usa_toque:
-		dir = _dir_toque()
-	if dir == Vector2.ZERO:
-		var analogico := Vector2(Input.get_joy_axis(joy, JOY_AXIS_LEFT_X), Input.get_joy_axis(joy, JOY_AXIS_LEFT_Y))
-		if analogico.length() > 0.25:
-			dir = analogico
+func _toque_fim(idx: int) -> void:
+	toques.erase(idx)
+	toque_vec.erase(idx)
 
-	var seg := {
-		"LP": Input.is_joy_button_pressed(joy, JOY_BUTTON_X),
-		"LK": Input.is_joy_button_pressed(joy, JOY_BUTTON_A),
-		"HP": Input.is_joy_button_pressed(joy, JOY_BUTTON_Y),
-		"HK": Input.is_joy_button_pressed(joy, JOY_BUTTON_B),
-		"CD": Input.is_joy_button_pressed(joy, JOY_BUTTON_RIGHT_SHOULDER),
-		"ROLL": Input.is_joy_button_pressed(joy, JOY_BUTTON_LEFT_SHOULDER),
-	}
-	if usa_toque:
-		for b in BOTOES.keys():
-			seg[b] = seg[b] or _toque_em(b)
+func _vec_dpad(p: Vector2) -> Vector2:
+	var v: Vector2 = (p - DPAD_CENTRO) / DPAD_RAIO
+	return v.limit_length(1.0)
 
-	var ant: Dictionary = anteriores[joy]
-	var ap := {}
-	for k in seg.keys():
-		ap[k] = seg[k] and not ant.get(k, false)
-	anteriores[joy] = seg
-
-	# Atalhos: LP+LK = esquiva, HP+HK = Guard Cancel / Blow Off
-	if seg.LP and seg.LK and (ap.LP or ap.LK):
-		ap["ROLL"] = true
-	if seg.HP and seg.HK and (ap.HP or ap.HK):
-		ap["CD"] = true
-
-	return {"dir": dir, "apertados": ap}
-
-func _dir_toque() -> Vector2:
-	for ponto in toques.values():
-		if ponto.x < 330.0:
-			var d: Vector2 = ponto - DPAD_CENTRO
-			if d.length() > 12.0:
-				return (d / DPAD_RAIO).limit_length(1.0)
-	return Vector2.ZERO
-
-func _toque_em(nome_botao: String) -> bool:
-	var c: Vector2 = BOTOES[nome_botao]
-	for ponto in toques.values():
-		if ponto.distance_to(c) <= RAIO_BOTAO + 6.0:
+func _segurado(id: String) -> bool:
+	for k in toques:
+		if toques[k] == id:
 			return true
 	return false
 
-func _input(event: InputEvent) -> void:
-	if event is InputEventScreenTouch:
-		var t: InputEventScreenTouch = event
-		if t.pressed:
-			toques[t.index] = t.position
-			_ao_tocar(t.position)
-		else:
-			toques.erase(t.index)
-	elif event is InputEventScreenDrag:
-		var d: InputEventScreenDrag = event
-		toques[d.index] = d.position
+# ---------- Entrada combinada (toque + controle) ----------
 
-func _ao_tocar(ponto: Vector2) -> void:
-	if BOTAO_EDITOR.has_point(ponto):
-		modo_editor = not modo_editor
+func _dir_p1() -> Vector2:
+	var v := Vector2.ZERO
+	for k in toque_vec:
+		v = toque_vec[k]
+	if v.length() < 0.2:
+		v = _dir_joy(0)
+	return v
+
+func _dir_joy(dev: int) -> Vector2:
+	var v := Vector2(Input.get_joy_axis(dev, JOY_AXIS_LEFT_X), Input.get_joy_axis(dev, JOY_AXIS_LEFT_Y))
+	if v.length() < 0.3:
+		v = Vector2.ZERO
+	if Input.is_joy_button_pressed(dev, JOY_BUTTON_DPAD_LEFT):
+		v.x -= 1.0
+	if Input.is_joy_button_pressed(dev, JOY_BUTTON_DPAD_RIGHT):
+		v.x += 1.0
+	if Input.is_joy_button_pressed(dev, JOY_BUTTON_DPAD_UP):
+		v.y -= 1.0
+	if Input.is_joy_button_pressed(dev, JOY_BUTTON_DPAD_DOWN):
+		v.y += 1.0
+	return v.limit_length(1.0)
+
+func _coletar_gamepads() -> void:
+	for dev in [0, 1]:
+		for m in JOY_MAPA:
+			var chave := str(dev) + "_" + str(m[0])
+			var agora: bool = Input.is_joy_button_pressed(dev, m[0])
+			if agora and not bool(joy_prev.get(chave, false)):
+				if dev == 0:
+					novos_p1.append(m[1])
+				else:
+					novos_p2.append(m[1])
+			joy_prev[chave] = agora
+
+func _montar_apertados(lista: Array) -> Dictionary:
+	var r := {}
+	for b in lista:
+		r[b] = true
+	if r.has("LP") and r.has("LK"):
+		r.erase("LP")
+		r.erase("LK")
+		r["ROLL"] = true
+	if r.has("HP") and r.has("HK"):
+		r.erase("HP")
+		r.erase("HK")
+		r["CD"] = true
+	return r
+
+# ---------- Loop ----------
+
+func _physics_process(_delta: float) -> void:
+	_coletar_gamepads()
+	if tela == Tela.LUTA:
+		_atualizar_luta()
+	novos_p1.clear()
+	novos_p2.clear()
+	queue_redraw()
+
+func _atualizar_luta() -> void:
+	p1.atualizar(_dir_p1(), _montar_apertados(novos_p1))
+	p2.atualizar(_dir_joy(1), _montar_apertados(novos_p2))
+	_separar_corpos()
+	_resolver_hit(p1, p2)
+	_resolver_hit(p2, p1)
+	_checar_combos()
+	if p1.estado == Personagem.Estado.KO or p2.estado == Personagem.Estado.KO:
+		ko_timer += 1
+		if ko_timer > 150:
+			_reiniciar_luta()
+
+func _separar_corpos() -> void:
+	if not p1.corpo_rect().intersects(p2.corpo_rect()):
 		return
-	if modo_editor:
-		_clique_editor(ponto)
-
-# ---------- Editor de golpes (toque) ----------
-
-func _em(ponto: Vector2, x: float, y: float, w: float, h: float) -> bool:
-	return Rect2(x, y, w, h).has_point(ponto)
-
-func _clique_editor(ponto: Vector2) -> void:
-	var g: Dictionary = p1.golpes[editor_idx]
-	# Cabecalho
-	if _em(ponto, 40, 52, 90, 36):
-		_trocar_idx(-1)
+	var dx: float = p2.pos.x - p1.pos.x
+	var sinal: float = 1.0 if dx >= 0.0 else -1.0
+	var falta: float = 50.0 - absf(dx)
+	if falta <= 0.0:
 		return
-	if _em(ponto, 140, 52, 90, 36):
-		_trocar_idx(1)
-		return
-	if _em(ponto, 240, 52, 90, 36):
-		_novo_golpe()
-		return
-	if _em(ponto, 340, 52, 90, 36):
-		_copiar_golpe()
-		return
-	if _em(ponto, 440, 52, 90, 36):
-		_apagar_golpe()
-		return
-	if _em(ponto, 540, 52, 90, 36):
-		_mover_golpe(-1)
-		return
-	if _em(ponto, 640, 52, 90, 36):
-		_mover_golpe(1)
-		return
-	# Nome
-	if _em(ponto, 40, 96, 880, 28):
-		_colar_nome(g)
-		return
-	# Rodape
-	if _em(ponto, 40, 458, 280, 40):
-		_exportar()
-		return
-	if _em(ponto, 340, 458, 280, 40):
-		_importar()
-		return
-	if _em(ponto, 640, 458, 280, 40):
-		modo_editor = false
-		return
-	# Campos
-	for i in LINHAS_ESQ.size():
-		_clicar_campo(g, LINHAS_ESQ[i], 40.0, 136.0 + i * 34.0, ponto)
-	for i in LINHAS_DIR.size():
-		_clicar_campo(g, LINHAS_DIR[i], 500.0, 136.0 + i * 34.0, ponto)
+	p1.pos.x -= sinal * falta * 0.5
+	p2.pos.x += sinal * falta * 0.5
 
-func _clicar_campo(g: Dictionary, chave: String, cx: float, y: float, ponto: Vector2) -> void:
-	var linha := Rect2(cx, y, 410, 30)
-	if CICLOS.has(chave):
-		if linha.has_point(ponto):
-			_ciclar(g, chave)
-	elif BOOLEANOS.has(chave):
-		if linha.has_point(ponto):
-			_gravar_campo(g, chave, not _ler_campo(g, chave))
-	elif NUMEROS.has(chave):
-		if Rect2(cx + 320.0, y + 2.0, 42, 26).has_point(ponto):
-			_ajustar(g, chave, -1)
-		elif Rect2(cx + 370.0, y + 2.0, 42, 26).has_point(ponto):
-			_ajustar(g, chave, 1)
-
-func _ler_campo(g: Dictionary, chave: String):
-	if chave.begins_with("hit_"):
-		return g.hitbox[chave.substr(4)]
-	return g[chave]
-
-func _gravar_campo(g: Dictionary, chave: String, valor) -> void:
-	if chave.begins_with("hit_"):
-		g.hitbox[chave.substr(4)] = valor
-	else:
-		g[chave] = valor
-
-func _ciclar(g: Dictionary, chave: String) -> void:
-	var lista: Array = CICLOS[chave]
-	var i := lista.find(g[chave])
-	_gravar_campo(g, chave, lista[(i + 1) % lista.size()])
-
-func _ajustar(g: Dictionary, chave: String, sinal: int) -> void:
-	var regra: Array = NUMEROS[chave]
-	var valor = clamp(float(_ler_campo(g, chave)) + float(regra[0]) * sinal, float(regra[1]), float(regra[2]))
-	if INTEIROS.has(chave):
-		valor = int(round(valor))
-	else:
-		valor = snappedf(valor, 0.01)
-	_gravar_campo(g, chave, valor)
-
-func _trocar_idx(d: int) -> void:
-	editor_idx = clampi(editor_idx + d, 0, p1.golpes.size() - 1)
-
-func _novo_golpe() -> void:
-	var g := Personagem.golpe_padrao()
-	g["nome"] = "Golpe " + str(p1.golpes.size() + 1)
-	p1.golpes.append(g)
-	editor_idx = p1.golpes.size() - 1
-
-func _copiar_golpe() -> void:
-	var c: Dictionary = p1.golpes[editor_idx].duplicate(true)
-	c["nome"] = str(c["nome"]) + " (copia)"
-	p1.golpes.insert(editor_idx + 1, c)
-	editor_idx += 1
-
-func _apagar_golpe() -> void:
-	if p1.golpes.size() <= 1:
-		mensagem = "Precisa existir pelo menos 1 golpe"
+func _resolver_hit(atk, dfn) -> void:
+	if not atk.hitbox_ativa() or atk.golpe_acertou:
 		return
-	p1.golpes.remove_at(editor_idx)
-	editor_idx = clampi(editor_idx, 0, p1.golpes.size() - 1)
-
-func _mover_golpe(d: int) -> void:
-	var j := editor_idx + d
-	if j < 0 or j >= p1.golpes.size():
+	var g: Dictionary = atk.golpe_atual
+	if not Caixa.colidem(atk.hitbox_rect(), dfn.corpo_rect()):
 		return
-	var tmp = p1.golpes[editor_idx]
-	p1.golpes[editor_idx] = p1.golpes[j]
-	p1.golpes[j] = tmp
-	editor_idx = j
+	var r: String = dfn.resultado_para(g)
+	if r == "nada":
+		return
+	atk.golpe_acertou = true
+	if r == "bloqueio":
+		dfn.receber_bloqueio(g)
+		return
+	var escala: float = maxf(0.5, 1.0 - 0.1 * float(atk.combo))
+	var dano: float = float(g["dano"]) * escala
+	atk.combo += 1
+	dfn.receber_acerto(g, dano)
+	if str(g["carga"]) != "" and float(g["energia_ganha"]) > 0.0:
+		atk.barra.ganhar(float(g["energia_ganha"]))
 
-func _colar_nome(g: Dictionary) -> void:
-	var t := DisplayServer.clipboard_get().strip_edges()
-	if t != "":
-		g["nome"] = t
-	else:
-		mensagem = "Area de transferencia vazia"
+func _checar_combos() -> void:
+	var neutros := [Personagem.Estado.PARADO, Personagem.Estado.ANDANDO, Personagem.Estado.PULANDO, Personagem.Estado.DEFENDENDO]
+	if p2.estado in neutros:
+		p1.combo = 0
+	if p1.estado in neutros:
+		p2.combo = 0
 
-func _exportar() -> void:
-	var txt := JSON.stringify({"nome": p1.nome, "golpes": p1.golpes}, "  ")
-	DisplayServer.clipboard_set(txt)
-	mensagem = "Personagem copiado (%d golpes). Cole em algum lugar para guardar." % p1.golpes.size()
+# ---------- Editor: abrir, fechar, importar ----------
+
+func _abrir_editor() -> void:
+	tela = Tela.EDITOR
+	toques.clear()
+	toque_vec.clear()
+	novos_p1.clear()
+	novos_p2.clear()
+	campo_golpe.visible = true
+	campo_pers.visible = true
+	ed_msg = ""
+	_atualizar_campos_editor()
+
+func _fechar_editor() -> void:
+	_salvar()
+	campo_golpe.release_focus()
+	campo_pers.release_focus()
+	campo_golpe.visible = false
+	campo_pers.visible = false
+	tela = Tela.LUTA
+	toques.clear()
+	toque_vec.clear()
+	_reiniciar_luta()
 
 func _importar() -> void:
-	var dados = JSON.parse_string(DisplayServer.clipboard_get())
-	var lista = null
-	if typeof(dados) == TYPE_DICTIONARY and dados.has("golpes"):
-		lista = dados["golpes"]
-		if dados.has("nome"):
-			p1.nome = str(dados["nome"])
-	elif typeof(dados) == TYPE_ARRAY:
-		lista = dados
-	if typeof(lista) != TYPE_ARRAY or lista.is_empty():
-		mensagem = "Nada valido na area de transferencia"
+	var lido: Variant = JSON.parse_string(DisplayServer.clipboard_get())
+	var d: Dictionary = _validar_personagem(lido)
+	if d.is_empty():
+		ed_msg = "A area de transferencia nao tem um personagem valido."
 		return
-	var novos: Array = []
-	for g in lista:
-		if typeof(g) == TYPE_DICTIONARY:
-			novos.append(Personagem.normalizar_golpe(g))
-	if novos.is_empty():
-		mensagem = "Nenhum golpe valido encontrado"
+	dados = d
+	ed_sel = 0
+	ed_scroll = 0
+	ed_msg = "Personagem importado: " + str(d["nome"])
+	_atualizar_campos_editor()
+
+func _atualizar_campos_editor() -> void:
+	var golpes: Array = dados["golpes"]
+	if golpes.is_empty():
 		return
-	p1.golpes = novos
-	editor_idx = 0
-	mensagem = "Personagem importado: %d golpes" % novos.size()
+	ed_sel = clampi(ed_sel, 0, golpes.size() - 1)
+	campo_golpe.text = str(golpes[ed_sel]["nome"])
+	campo_pers.text = str(dados["nome"])
+
+func _ajustar_scroll() -> void:
+	if ed_sel < ed_scroll:
+		ed_scroll = ed_sel
+	if ed_sel >= ed_scroll + VISIVEIS:
+		ed_scroll = ed_sel - VISIVEIS + 1
+
+func _on_nome_golpe(t: String) -> void:
+	var golpes: Array = dados["golpes"]
+	golpes[ed_sel]["nome"] = t
+
+func _on_nome_pers(t: String) -> void:
+	dados["nome"] = t
+
+# ---------- Editor: cliques ----------
+
+func _clique_editor(p: Vector2) -> void:
+	if ED_FECHAR.has_point(p):
+		_fechar_editor()
+		return
+	if ED_EXPORTAR.has_point(p):
+		DisplayServer.clipboard_set(JSON.stringify(dados, "  "))
+		ed_msg = "Personagem copiado para a area de transferencia."
+		return
+	if ED_IMPORTAR.has_point(p):
+		_importar()
+		return
+	var golpes: Array = dados["golpes"]
+	for i in range(ed_scroll, mini(golpes.size(), ed_scroll + VISIVEIS)):
+		if Rect2(10, 52 + (i - ed_scroll) * 26, 240, 24).has_point(p):
+			ed_sel = i
+			_atualizar_campos_editor()
+			return
+	if ED_NOVO.has_point(p):
+		golpes.insert(ed_sel + 1, Personagem.golpe_padrao())
+		ed_sel += 1
+	elif ED_COPIA.has_point(p):
+		var copia: Dictionary = Personagem.normalizar_golpe(golpes[ed_sel])
+		copia["nome"] = str(copia["nome"]) + " (copia)"
+		golpes.insert(ed_sel + 1, copia)
+		ed_sel += 1
+	elif ED_APAGA.has_point(p):
+		if golpes.size() > 1:
+			golpes.remove_at(ed_sel)
+			ed_sel = clampi(ed_sel, 0, golpes.size() - 1)
+		else:
+			ed_msg = "Precisa existir pelo menos 1 golpe."
+	elif ED_SOBE.has_point(p) and ed_sel > 0:
+		_trocar(ed_sel, ed_sel - 1)
+		ed_sel -= 1
+	elif ED_DESCE.has_point(p) and ed_sel < golpes.size() - 1:
+		_trocar(ed_sel, ed_sel + 1)
+		ed_sel += 1
+	else:
+		_clique_campo(p)
+		return
+	_ajustar_scroll()
+	_atualizar_campos_editor()
+
+func _trocar(a: int, b: int) -> void:
+	var golpes: Array = dados["golpes"]
+	var t = golpes[a]
+	golpes[a] = golpes[b]
+	golpes[b] = t
+
+func _clique_campo(p: Vector2) -> void:
+	var golpes: Array = dados["golpes"]
+	var g: Dictionary = golpes[ed_sel]
+	for i in CAMPOS.size():
+		var c: Array = CAMPOS[i]
+		var y: int = 52 + i * 24
+		if Rect2(530, y, 30, 22).has_point(p):
+			_mudar_campo(g, c, -1)
+			return
+		if Rect2(565, y, 30, 22).has_point(p):
+			_mudar_campo(g, c, 1)
+			return
+
+func _mudar_campo(g: Dictionary, c: Array, delta: int) -> void:
+	var chave: String = str(c[0])
+	var tipo: String = str(c[2])
+	var atual = _get_valor(g, chave)
+	var novo
+	match tipo:
+		"lista":
+			var opts: Array = c[3]
+			novo = opts[posmod(opts.find(atual) + delta, opts.size())]
+		"bool":
+			novo = not bool(atual)
+		"int":
+			novo = clampi(int(atual) + delta * int(c[3]), int(c[4]), int(c[5]))
+		"float":
+			novo = clampf(float(atual) + delta * float(c[3]), float(c[4]), float(c[5]))
+	_set_valor(g, chave, novo)
+
+func _get_valor(g: Dictionary, chave: String) -> Variant:
+	if chave.begins_with("hb_"):
+		return g["hitbox"][chave.substr(3)]
+	return g[chave]
+
+func _set_valor(g: Dictionary, chave: String, v) -> void:
+	if chave.begins_with("hb_"):
+		g["hitbox"][chave.substr(3)] = v
+	else:
+		g[chave] = v
+
+func _fmt(c: Array, v) -> String:
+	var tipo: String = str(c[2])
+	if tipo == "bool":
+		return "SIM" if bool(v) else "NAO"
+	if tipo == "float":
+		return ("%.0f" if float(c[3]) >= 1.0 else "%.1f") % float(v)
+	if tipo == "int":
+		return str(int(v))
+	return str(v)
 
 # ---------- Desenho ----------
 
 func _draw() -> void:
-	draw_rect(Rect2(-300, -300, 1600, 1200), Color(0.1, 0.1, 0.13))
-	draw_rect(Rect2(-300, 480, 1600, 300), Color(0.2, 0.2, 0.23))
-	if p1 == null or p2 == null:
-		return
-
-	_desenhar_hud()
-	_desenhar_lutador(p1, Color(0.95, 0.5, 0.1))
-	_desenhar_lutador(p2, Color(0.1, 0.5, 0.95))
-
-	if modo_editor:
+	if tela == Tela.EDITOR:
 		_desenhar_editor()
 	else:
-		_desenhar_controles()
+		_desenhar_luta()
 
-	draw_rect(BOTAO_EDITOR, Color(0.6, 0.2, 0.2))
-	_texto_centro(BOTAO_EDITOR.get_center(), "EDITOR", 16)
+func _texto(pos: Vector2, txt: String, tam: int, cor: Color) -> void:
+	draw_string(fonte, pos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, tam, cor)
 
-	if ko_timer > 0.0:
-		_texto(Vector2(380, 280), "K.O.", 56)
+func _texto_centro(r: Rect2, txt: String, tam: int, cor: Color) -> void:
+	draw_string(fonte, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + tam * 0.35), txt, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, tam, cor)
 
-func _desenhar_hud() -> void:
-	_texto(Vector2(40, 22), p1.nome, 16)
-	_texto(Vector2(640, 22), p2.nome, 16)
-	_barra(Rect2(40, 28, 360, 20), p1.vida.proporcao(), Color(0.2, 0.85, 0.2), false, 1)
-	_barra(Rect2(560, 28, 360, 20), p2.vida.proporcao(), Color(0.2, 0.85, 0.2), true, 1)
-	_barra(Rect2(40, 52, 280, 12), p1.energia.proporcao(), Color(0.2, 0.5, 1.0), false, 3)
-	_barra(Rect2(640, 52, 280, 12), p2.energia.proporcao(), Color(0.2, 0.5, 1.0), true, 3)
-	_texto(Vector2(40, 84), p1.nome_estado(), 14)
-	_texto(Vector2(640, 84), p2.nome_estado(), 14)
+func _botao(r: Rect2, txt: String, sel: bool = false) -> void:
+	draw_rect(r, Color(0.3, 0.3, 0.5) if sel else Color(0.18, 0.18, 0.25))
+	draw_rect(r, Color(0.8, 0.8, 1.0), false, 1.0)
+	_texto_centro(r, txt, 14, Color.WHITE)
 
-func _barra(r: Rect2, prop: float, cor: Color, direita: bool, segmentos: int) -> void:
-	draw_rect(r, Color(0.25, 0.1, 0.1))
-	var w: float = r.size.x * clampf(prop, 0.0, 1.0)
-	var x: float = r.position.x
-	if direita:
-		x = r.position.x + r.size.x - w
-	draw_rect(Rect2(x, r.position.y, w, r.size.y), cor)
-	for i in range(1, segmentos):
-		var sx: float = r.position.x + r.size.x * i / segmentos
-		draw_line(Vector2(sx, r.position.y), Vector2(sx, r.position.y + r.size.y), Color.BLACK, 2.0)
+func _desenhar_luta() -> void:
+	draw_rect(Rect2(0, 0, 960, 540), Color(0.06, 0.06, 0.1))
+	draw_rect(Rect2(0, Personagem.CHAO_Y, 960, 60), Color(0.2, 0.2, 0.25))
+	_desenhar_personagem(p1, Color(0.2, 0.5, 1.0))
+	_desenhar_personagem(p2, Color(1.0, 0.45, 0.1))
+	_desenhar_hud()
+	_desenhar_controles()
+	if p1.estado == Personagem.Estado.KO or p2.estado == Personagem.Estado.KO:
+		_texto_centro(Rect2(0, 200, 960, 80), "K.O.", 56, Color.RED)
 
-func _desenhar_lutador(l: Personagem, cor: Color) -> void:
-	var c: Color = cor
-	if l.invulneravel:
-		c.a = 0.45
-	draw_rect(Rect2(l.pos.x - 25, l.pos.y - 100, 50, 100), c)
-	for h in l.hurtboxes:
-		draw_rect(h.obter_rect(l.pos.x, l.pos.y, l.virado_direita), Color(0, 1, 0, 0.35), false, 2.0)
-	for h in l.hitboxes:
-		draw_rect(h.obter_rect(l.pos.x, l.pos.y, l.virado_direita), Color(1, 0, 0, 0.5))
-	var frente: float = 1.0 if l.virado_direita else -1.0
-	draw_circle(l.pos + Vector2(frente * 18.0, -88.0), 4.0, Color.WHITE)
-
-func _desenhar_controles() -> void:
-	draw_circle(DPAD_CENTRO, DPAD_RAIO, Color(1, 1, 1, 0.12))
-	var alvo: Vector2 = _dir_toque()
-	draw_circle(DPAD_CENTRO + alvo * DPAD_RAIO * 0.6, 26.0, Color(1, 1, 1, 0.35))
-	for nome_botao in BOTOES.keys():
-		var c: Vector2 = BOTOES[nome_botao]
-		var ativo: bool = _toque_em(nome_botao)
-		draw_circle(c, RAIO_BOTAO, Color(1, 1, 1, 0.45 if ativo else 0.18))
-		var rotulo: String = "ROL" if nome_botao == "ROLL" else nome_botao
-		_texto_centro(c, rotulo, 14)
-
-func _desenhar_editor() -> void:
-	draw_rect(Rect2(20, 20, 920, 500), Color(0.05, 0.05, 0.08, 0.97))
-	_texto(Vector2(40, 42), "EDITOR DE GOLPES: " + p1.nome, 16)
-
-	_botao_ui(Rect2(40, 52, 90, 36), "< ANT")
-	_botao_ui(Rect2(140, 52, 90, 36), "PROX >")
-	_botao_ui(Rect2(240, 52, 90, 36), "NOVO")
-	_botao_ui(Rect2(340, 52, 90, 36), "COPIA")
-	_botao_ui(Rect2(440, 52, 90, 36), "APAGA", Color(0.6, 0.15, 0.15))
-	_botao_ui(Rect2(540, 52, 90, 36), "SOBE")
-	_botao_ui(Rect2(640, 52, 90, 36), "DESCE")
-
-	var g: Dictionary = p1.golpes[editor_idx]
-	_texto(Vector2(750, 76), "%d/%d" % [editor_idx + 1, p1.golpes.size()], 16)
-
-	draw_rect(Rect2(40, 96, 880, 28), Color(0.15, 0.15, 0.2))
-	_texto(Vector2(50, 116), "Nome: " + str(g["nome"]) + "   (toque aqui para colar o nome da area de transferencia)", 14)
-
-	for i in LINHAS_ESQ.size():
-		_desenhar_campo(g, LINHAS_ESQ[i], 40.0, 136.0 + i * 34.0)
-	for i in LINHAS_DIR.size():
-		_desenhar_campo(g, LINHAS_DIR[i], 500.0, 136.0 + i * 34.0)
-
-	_botao_ui(Rect2(40, 458, 280, 40), "EXPORTAR PERSONAGEM")
-	_botao_ui(Rect2(340, 458, 280, 40), "IMPORTAR PERSONAGEM")
-	_botao_ui(Rect2(640, 458, 280, 40), "FECHAR", Color(0.2, 0.5, 0.2))
-	_texto(Vector2(40, 518), mensagem, 14, Color(1, 0.9, 0.4))
-
-func _desenhar_campo(g: Dictionary, chave: String, cx: float, y: float) -> void:
-	draw_rect(Rect2(cx, y, 410, 30), Color(0.12, 0.12, 0.17))
-	_texto(Vector2(cx + 10, y + 21), str(ROTULOS[chave]), 14)
-	var v = _ler_campo(g, chave)
-	if NUMEROS.has(chave):
-		_texto(Vector2(cx + 230, y + 21), str(v), 16, Color(1, 1, 0.6))
-		_botao_ui(Rect2(cx + 320, y + 2, 42, 26), "-")
-		_botao_ui(Rect2(cx + 370, y + 2, 42, 26), "+")
-	else:
-		var txt: String = str(v)
-		if typeof(v) == TYPE_BOOL:
-			txt = "SIM" if v else "NAO"
-		_texto(Vector2(cx + 230, y + 21), txt, 16, Color(1, 1, 0.6))
-
-func _botao_ui(r: Rect2, txt: String, cor: Color = Color(0.2, 0.3, 0.5)) -> void:
-	draw_rect(r, cor)
-	_texto_centro(r.get_center(), txt, 14)
-
-func _texto(pos: Vector2, txt: String, tamanho: int = 16, cor: Color = Color.WHITE) -> void:
-	draw_string(ThemeDB.fallback_font, pos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, tamanho, cor)
-
-func _texto_centro(centro: Vector2, txt: String, tamanho: int) -> void:
-	var larg: float = ThemeDB.fallback_font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, tamanho).x
-	_texto(centro + Vector2(-larg / 2.0, tamanho / 3.0), txt, tamanho)
+func _desenhar_personagem(p, cor: Color) -> void:
+	var corpo: Rect2 = p.corpo_rect()
+	draw_rect(corpo, cor)
+	draw_rect(corpo, Color.WHITE, false, 2.0)
+	if p.hitbox_ativa():
+		draw_rect(p.hitbox_rect(), Color(1.0, 0
