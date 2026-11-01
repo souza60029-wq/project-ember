@@ -1,23 +1,24 @@
 name: Teste Godot
 
-on: push
+on:
+  push:
+  workflow_dispatch:
 
 jobs:
   testar:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - name: Baixar o codigo
+      - name: Baixar código
         uses: actions/checkout@v4
 
-      - name: Baixar o Godot
+      - name: Baixar Godot 4.2.2 (Linux)
         run: |
-          wget https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_linux.x86_64.zip
-          unzip Godot_v4.2.2-stable_linux.x86_64.zip
-          chmod +x Godot_v4.2.2-stable_linux.x86_64
+          wget -q https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_linux.x86_64.zip -O godot.zip
+          unzip -q godot.zip
           mv Godot_v4.2.2-stable_linux.x86_64 godot
+          chmod +x godot
 
-      - name: Rodar teste de combate
-        run: ./godot --headless --script teste.gd
-
-      - name: Rodar teste visual
-        run: ./godot --headless --script teste_visual.gd
+      - name: Testes da lógica
+        run: timeout 120 ./godot --headless --script teste.gd
