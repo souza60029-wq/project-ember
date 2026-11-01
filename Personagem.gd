@@ -1,268 +1,340 @@
 extends RefCounted
 
-const Barra = preload("res://Barra.gd")
 const Caixa = preload("res://Caixa.gd")
+const Barra = preload("res://Barra.gd")
 
-enum Estado { PARADO, ATACANDO, APANHANDO, BLOQUEANDO, CAINDO, LEVANTANDO, ESQUIVANDO, PULO_PREPARANDO, NO_AR }
-enum Forca { FRACO, MEDIO, FORTE, ESPECIAL, SUPER, COMANDO }
+const DT: float = 1.0 / 60.0
+const NOMES_ESTADO = ["PARADO", "ANDANDO", "PULANDO", "DEFENDENDO", "ATACANDO", "GOLPEADO", "CAIDO", "LEVANTANDO", "ESQUIVANDO", "KO"]
 
-var nome: String
-var vida: int = 100
-var estado: Estado = Estado.PARADO
-var barra = Barra.new()
+enum Estado { PARADO, ANDANDO, PULANDO, DEFENDENDO, ATACANDO, GOLPEADO, CAIDO, LEVANTANDO, ESQUIVANDO, KO }
 
-var pos_x: float = 0.0
-var pos_y: float = 0.0
-var virado_para_direita: bool = true
+var nome: String = "Lutador"
+var pos: Vector2 = Vector2.ZERO
+var vel: Vector2 = Vector2.ZERO
+var virado_direita: bool = true
+var estado: int = Estado.PARADO
+var tempo_estado: float = 0.0
 
-var golpe_startup: int = 0
-var golpe_active: int = 0
-var golpe_recovery: int = 0
-var frame_atual: int = 0
-var golpe_e_comando_especial: bool = false
-var golpe_forca: int = Forca.FRACO
-var golpe_pode_cancelar_para_comando: bool = false
-var golpe_acerta_caido: bool = false
-var golpe_e_blow_off: bool = false
-var golpe_invencivel: bool = false
+var vida: Barra
+var energia: Barra
 
-var golpe_armadura_contra: int = -1
-var golpe_armadura_fim: int = 0
-var armadura_cargas_restantes: int = 0
+var chao_y: float = 480.0
+var gravidade: float = 1800.0
+var vel_pulo: float = -750.0
+var vel_pulo_sombra: float = -950.0
+var vel_andar: float = 240.0
 
-var golpe_hitbox: Caixa = null
-var hurtbox_padrao: Caixa
+var invulneravel: bool = false
+var knockdown_sem_recuperacao: bool = false
+var eh_pulo_sombra: bool = false
+var frames_hitstun: int = 0
 
-var esquiva_frames_imune: int = 12
-var esquiva_frames_recovery: int = 6
-var esquiva_frame_atual: int = 0
+var charge_tras: float = 0.0
+var charge_baixo: float = 0.0
+var ultimo_baixo: float = 0.0
+var tempo_desde_soltou_baixo: float = 99.0
 
-var hits_consecutivos_no_oponente: int = 0
-var ultima_forca_usada: int = -1
+var golpes: Array = []
+var golpe_atual: Dictionary = {}
+var frame_golpe: int = 0
+var golpe_acertou: bool = false
+var em_guard_cancel: bool = false
 
-var pode_recuperar_queda: bool = true
-var frames_caido_atual: int = 0
-var frames_caido_antes_de_levantar: int = 40
-var frames_levantando_atual: int = 0
-var frames_levantando_total: int = 12
+var hurtboxes: Array = []
+var hitboxes: Array = []
 
-var pulo_frames_preparo_total: int = 0
-var pulo_frame_preparo_atual: int = 0
-var pulo_frames_ar_total: int = 0
-var pulo_frame_ar_atual: int = 0
+func _init(p_nome: String, p_pos: Vector2, p_direita: bool) -> void:
+	nome = p_nome
+	hurtboxes.append(Caixa.new(Caixa.Tipo.CORPO, -20, -95, 40, 95))
+	golpes = golpes_padrao_ash()
+	resetar(p_pos, p_direita)
 
-var segurando_direcao_frames: int = 0
-
-func _init(nome_personagem: String, x_inicial: float = 0.0):
-	nome = nome_personagem
-	pos_x = x_inicial
-	hurtbox_padrao = Caixa.new(0, 0, 40, 100)
-
-func esta_no_ar() -> bool:
-	return estado == Estado.NO_AR or estado == Estado.PULO_PREPARANDO
-
-func iniciar_golpe(startup: int, active: int, recovery: int, hitbox: Caixa, forca: int = Forca.FRACO, e_comando_especial: bool = false, pode_cancelar_para_comando: bool = false, armadura_contra: int = -1, armadura_fim: int = 0, armadura_cargas: int = 0, acerta_caido: bool = false, e_blow_off: bool = false, invencivel: bool = false, requer_ar: bool = false, requer_charge: int = 0) -> bool:
-
-	if requer_ar and not esta_no_ar():
-		print("%s NAO PODE - golpe exige estar no ar" % nome)
-		return false
-
-	if requer_charge > 0 and segurando_direcao_frames < requer_charge:
-		print("%s NAO PODE - charge insuficiente (%d/%d)" % [nome, segurando_direcao_frames, requer_charge])
-		return false
-
-	if estado == Estado.ATACANDO:
-		if forca < ultima_forca_usada:
-			print("%s NAO PODE cancelar forca %d para forca %d" % [nome, ultima_forca_usada, forca])
-			return false
-		if forca == Forca.COMANDO and not golpe_pode_cancelar_para_comando:
-			print("%s NAO PODE cancelar para COMANDO (flag desligada)" % nome)
-			return false
-
-	estado = Estado.ATACANDO
-	golpe_startup = startup
-	golpe_active = active
-	golpe_recovery = recovery
-	frame_atual = 0
-	golpe_hitbox = hitbox
-	golpe_forca = forca
-	golpe_e_comando_especial = e_comando_especial
-	golpe_pode_cancelar_para_comando = pode_cancelar_para_comando
-	golpe_armadura_contra = armadura_contra
-	golpe_armadura_fim = armadura_fim
-	armadura_cargas_restantes = armadura_cargas
-	golpe_acerta_caido = acerta_caido
-	golpe_e_blow_off = e_blow_off
-	golpe_invencivel = invencivel
-	ultima_forca_usada = forca
-
-	print("%s iniciou golpe (forca:%d startup:%d active:%d blow_off:%s)" % [nome, forca, startup, active, e_blow_off])
-
-	if e_comando_especial:
-		barra.ganhar(20.0)
-
-	return true
-
-func tentar_guard_cancel(hitbox: Caixa, startup: int, active: int, recovery: int) -> bool:
-	if estado != Estado.BLOQUEANDO:
-		print("%s nao esta bloqueando, nao pode fazer Guard Cancel" % nome)
-		return false
-	if not barra.gastar(50.0):
-		return false
+func resetar(p_pos: Vector2, p_direita: bool) -> void:
+	pos = p_pos
+	vel = Vector2.ZERO
+	virado_direita = p_direita
 	estado = Estado.PARADO
-	iniciar_golpe(startup, active, recovery, hitbox, Forca.COMANDO, false, false, -1, 0, 0, false, true, true)
-	print("%s executou GUARD CANCEL BLOW BACK (invencivel)!" % nome)
-	return true
+	tempo_estado = 0.0
+	invulneravel = false
+	knockdown_sem_recuperacao = false
+	eh_pulo_sombra = false
+	frames_hitstun = 0
+	charge_tras = 0.0
+	charge_baixo = 0.0
+	ultimo_baixo = 0.0
+	tempo_desde_soltou_baixo = 99.0
+	golpe_atual = {}
+	frame_golpe = 0
+	golpe_acertou = false
+	em_guard_cancel = false
+	hitboxes.clear()
+	vida = Barra.new(100.0, 1, true)
+	energia = Barra.new(100.0, 3, false)
 
-func iniciar_esquiva():
-	estado = Estado.ESQUIVANDO
-	esquiva_frame_atual = 0
-	hits_consecutivos_no_oponente = 0
-	print("%s iniciou uma ESQUIVA" % nome)
+# ---------- Golpes (dados) ----------
 
-func iniciar_queda(recuperavel: bool):
-	estado = Estado.CAINDO
-	pode_recuperar_queda = recuperavel
-	frames_caido_atual = 0
-	print("%s caiu no chao (recuperavel: %s)" % [nome, recuperavel])
+static func golpe_padrao() -> Dictionary:
+	return {
+		"nome": "Novo golpe",
+		"botao": "LP",
+		"carga": "nenhuma",
+		"carga_seg": 0.5,
+		"forca": 0,
+		"startup": 5,
+		"active": 3,
+		"recovery": 8,
+		"dano": 5.0,
+		"custo": 0.0,
+		"energia_ganha": 0.0,
+		"antichao": false,
+		"blowoff": false,
+		"so_ar": false,
+		"hitbox": {"x": 20.0, "y": -75.0, "w": 45.0, "h": 20.0}
+	}
 
-func tentar_recuperacao_rapida() -> bool:
-	if estado != Estado.CAINDO:
-		return false
-	if not pode_recuperar_queda:
-		print("%s NAO PODE recuperacao rapida (foi Blow Off)" % nome)
-		return false
-	estado = Estado.LEVANTANDO
-	frames_levantando_atual = 0
-	print("%s fez RECUPERACAO RAPIDA (invencivel)" % nome)
-	return true
+static func normalizar_golpe(g: Dictionary) -> Dictionary:
+	var base := golpe_padrao()
+	for k in base.keys():
+		if k != "hitbox" and g.has(k):
+			base[k] = g[k]
+	if g.has("hitbox") and typeof(g["hitbox"]) == TYPE_DICTIONARY:
+		for eixo in ["x", "y", "w", "h"]:
+			base.hitbox[eixo] = float(g.hitbox.get(eixo, base.hitbox[eixo]))
+	return base
 
-func iniciar_pulo(tipo_pulo: String = "normal", tipo_altura: String = "normal") -> bool:
-	if estado != Estado.PARADO:
-		return false
+static func _montar(n: String, botao: String, carga: String, forca: int, st: int, at: int, rc: int, dano: float, custo: float, ganho: float, hit: Array, blowoff: bool = false) -> Dictionary:
+	var g := golpe_padrao()
+	g.nome = n
+	g.botao = botao
+	g.carga = carga
+	g.forca = forca
+	g.startup = st
+	g.active = at
+	g.recovery = rc
+	g.dano = dano
+	g.custo = custo
+	g.energia_ganha = ganho
+	g.blowoff = blowoff
+	g.hitbox = {"x": float(hit[0]), "y": float(hit[1]), "w": float(hit[2]), "h": float(hit[3])}
+	return g
 
-	var preparo = 4
-	var duracao_ar = 30
-	if tipo_altura == "curto":
-		duracao_ar = 18
-	if tipo_pulo == "sombra":
-		preparo = 0
-		duracao_ar += 6
+static func golpes_padrao_ash() -> Array:
+	return [
+		_montar("Soco Fraco", "LP", "nenhuma", 0, 4, 3, 6, 4.0, 0.0, 0.0, [20, -75, 45, 20]),
+		_montar("Chute Fraco", "LK", "nenhuma", 0, 5, 3, 7, 4.0, 0.0, 0.0, [20, -45, 50, 20]),
+		_montar("Soco Forte", "HP", "nenhuma", 1, 8, 4, 12, 8.0, 0.0, 0.0, [20, -80, 50, 25]),
+		_montar("Chute Forte", "HK", "nenhuma", 1, 9, 5, 14, 10.0, 0.0, 0.0, [20, -65, 60, 25]),
+		_montar("Ventose", "HP", "tras", 2, 11, 6, 16, 14.0, 0.0, 15.0, [25, -60, 70, 30]),
+		_montar("Nivose", "HK", "baixo", 2, 7, 8, 22, 16.0, 0.0, 20.0, [0, -110, 50, 70]),
+		_montar("Blow Off", "CD", "nenhuma", 1, 14, 5, 20, 12.0, 0.0, 0.0, [15, -70, 65, 35], true),
+		_montar("Pluviose (Super)", "HP", "nenhuma", 3, 5, 12, 26, 32.0, 100.0, 0.0, [10, -120, 70, 90], true),
+	]
 
-	pulo_frames_preparo_total = preparo
-	pulo_frame_preparo_atual = 0
-	pulo_frames_ar_total = duracao_ar
-	pulo_frame_ar_atual = 0
+static func golpe_guard_cancel() -> Dictionary:
+	return _montar("Guard Cancel Blow Back", "CD", "nenhuma", 3, 3, 5, 14, 8.0, 0.0, 0.0, [15, -70, 60, 35], true)
 
-	estado = Estado.PULO_PREPARANDO if preparo > 0 else Estado.NO_AR
+# ---------- Atualizacao (1 frame fixo) ----------
 
-	print("%s iniciou pulo (%s, %s) preparo:%d ar:%d" % [nome, tipo_pulo, tipo_altura, preparo, duracao_ar])
-	return true
+func atualizar(dir: Vector2, apertados: Dictionary) -> void:
+	tempo_estado += DT
+	if estado == Estado.KO:
+		return
 
-func esta_na_janela_defesa_aerea() -> bool:
-	if estado != Estado.NO_AR:
-		return false
-	var inicio = pulo_frames_ar_total * 0.25
-	var fim = pulo_frames_ar_total * 0.75
-	return pulo_frame_ar_atual >= inicio and pulo_frame_ar_atual < fim
+	var tras: bool = (dir.x < -0.5 and virado_direita) or (dir.x > 0.5 and not virado_direita)
+	_atualizar_cargas(dir, tras)
 
-func esta_imune_na_esquiva() -> bool:
-	return estado == Estado.ESQUIVANDO and esquiva_frame_atual < esquiva_frames_imune
+	if apertados.get("ROLL", false) and _pode_esquivar():
+		_iniciar_esquiva()
+	elif apertados.get("CD", false) and estado == Estado.DEFENDENDO and energia.gastar(50.0):
+		_executar(golpe_guard_cancel(), true)
+	elif estado in [Estado.PARADO, Estado.ANDANDO, Estado.DEFENDENDO, Estado.PULANDO, Estado.ATACANDO]:
+		var escolhido: Dictionary = _escolher_golpe(apertados)
+		if not escolhido.is_empty() and _pode_cancelar_para(escolhido):
+			_executar(escolhido)
 
-func esta_invencivel_no_golpe() -> bool:
-	return estado == Estado.ATACANDO and golpe_invencivel and frame_atual < (golpe_startup + golpe_active)
-
-func esta_no_frame_ativo() -> bool:
-	return estado == Estado.ATACANDO and frame_atual >= golpe_startup and frame_atual < (golpe_startup + golpe_active)
-
-func esta_com_armadura_ativa() -> bool:
-	return estado == Estado.ATACANDO and golpe_armadura_contra >= 0 and frame_atual < golpe_armadura_fim and armadura_cargas_restantes > 0
-
-func obter_hitbox_absoluta() -> Rect2:
-	return golpe_hitbox.obter_retangulo_absoluto(pos_x, pos_y, virado_para_direita)
-
-func obter_hurtbox_absoluta() -> Rect2:
-	return hurtbox_padrao.obter_retangulo_absoluto(pos_x, pos_y, virado_para_direita)
-
-func avancar_frame():
 	match estado:
+		Estado.PARADO, Estado.ANDANDO, Estado.DEFENDENDO:
+			_processar_chao(dir, tras)
 		Estado.ATACANDO:
-			frame_atual += 1
-			if frame_atual >= (golpe_startup + golpe_active + golpe_recovery):
-				estado = Estado.PARADO
-				ultima_forca_usada = -1
-
-		Estado.ESQUIVANDO:
-			esquiva_frame_atual += 1
-			if esquiva_frame_atual >= (esquiva_frames_imune + esquiva_frames_recovery):
-				estado = Estado.PARADO
-
-		Estado.CAINDO:
-			frames_caido_atual += 1
-			if frames_caido_atual >= frames_caido_antes_de_levantar:
-				estado = Estado.LEVANTANDO
-				frames_levantando_atual = 0
-
+			_processar_ataque()
+		Estado.GOLPEADO:
+			frames_hitstun -= 1
+			if frames_hitstun <= 0:
+				_mudar_estado(_estado_padrao())
+		Estado.CAIDO:
+			if tempo_estado >= 0.6:
+				_mudar_estado(Estado.LEVANTANDO)
+				invulneravel = true
 		Estado.LEVANTANDO:
-			frames_levantando_atual += 1
-			if frames_levantando_atual >= frames_levantando_total:
-				estado = Estado.PARADO
+			if tempo_estado >= 0.3:
+				invulneravel = false
+				knockdown_sem_recuperacao = false
+				_mudar_estado(_estado_padrao())
+		Estado.ESQUIVANDO:
+			pos.x += vel_andar * 1.5 * DT * (1.0 if virado_direita else -1.0)
+			if tempo_estado >= 0.4:
+				invulneravel = false
+				_mudar_estado(_estado_padrao())
 
-		Estado.PULO_PREPARANDO:
-			pulo_frame_preparo_atual += 1
-			if pulo_frame_preparo_atual >= pulo_frames_preparo_total:
-				estado = Estado.NO_AR
-				pulo_frame_ar_atual = 0
+	_fisica()
 
-		Estado.NO_AR:
-			pulo_frame_ar_atual += 1
-			if pulo_frame_ar_atual >= pulo_frames_ar_total:
-				estado = Estado.PARADO
-
-func levar_dano(quantidade: int, empurrar_x: float = 0.0) -> int:
-	var escala = max(1.0 - (hits_consecutivos_no_oponente * 0.15), 0.2)
-	var dano_final = int(quantidade * escala)
-	vida -= dano_final
-	pos_x += empurrar_x
-	hits_consecutivos_no_oponente += 1
-	print("%s levou %d de dano! Vida restante: %d" % [nome, dano_final, vida])
-	return dano_final
-
-func receber_ataque(poder_do_golpe: int, dano: int, empurrar_x: float = 0.0, e_blow_off: bool = false, acerta_caido: bool = false):
-	if estado == Estado.LEVANTANDO:
-		print("%s esta LEVANTANDO (invencivel) - ignorado!" % nome)
-		return
-
-	if estado == Estado.CAINDO:
-		if not acerta_caido:
-			print("%s esta CAIDO - golpe normal nao alcanca" % nome)
-			return
-		print("%s foi atingido CAIDO por golpe anti-chao!" % nome)
-		levar_dano(dano, empurrar_x)
-		return
-
-	if esta_imune_na_esquiva():
-		print("%s estava IMUNE (esquiva) - ignorado!" % nome)
-		return
-
-	if esta_invencivel_no_golpe():
-		print("%s estava INVENCIVEL (Guard Cancel) - ignorado!" % nome)
-		return
-
-	if esta_com_armadura_ativa():
-		if poder_do_golpe <= golpe_armadura_contra:
-			armadura_cargas_restantes -= 1
-			print("%s ABSORVEU com ARMADURA!" % nome)
-			return
-		else:
-			print("%s teve ARMADURA QUEBRADA!" % nome)
-			levar_dano(dano, empurrar_x)
-			estado = Estado.APANHANDO
-			return
-
-	levar_dano(dano, empurrar_x)
-
-	if e_blow_off:
-		iniciar_queda(false)
+func _atualizar_cargas(dir: Vector2, tras: bool) -> void:
+	if tras:
+		charge_tras += DT
 	else:
-		estado = Estado.APANHANDO
+		charge_tras = 0.0
+	if dir.y > 0.5:
+		charge_baixo += DT
+		tempo_desde_soltou_baixo = 0.0
+	else:
+		if charge_baixo > 0.0:
+			ultimo_baixo = charge_baixo
+		charge_baixo = 0.0
+		tempo_desde_soltou_baixo += DT
+
+func _processar_chao(dir: Vector2, tras: bool) -> void:
+	if pos.y < chao_y:
+		return
+	if dir.y < -0.5:
+		_pular(dir.x)
+		return
+	if tras:
+		_mudar_estado(Estado.DEFENDENDO)
+		return
+	if abs(dir.x) > 0.2:
+		pos.x += dir.x * vel_andar * DT
+		_mudar_estado(Estado.ANDANDO)
+	else:
+		_mudar_estado(Estado.PARADO)
+
+func _pular(dir_x: float) -> void:
+	eh_pulo_sombra = ultimo_baixo >= 0.15 and tempo_desde_soltou_baixo <= 0.2
+	if eh_pulo_sombra:
+		ultimo_baixo = 0.0
+	vel.y = vel_pulo_sombra if eh_pulo_sombra else vel_pulo
+	vel.x = dir_x * vel_andar
+	_mudar_estado(Estado.PULANDO)
+
+func _fisica() -> void:
+	if pos.y < chao_y or vel.y < 0.0:
+		vel.y += gravidade * DT
+		pos += vel * DT
+	if pos.y >= chao_y and vel.y >= 0.0:
+		pos.y = chao_y
+		vel = Vector2.ZERO
+		if estado == Estado.PULANDO:
+			_mudar_estado(Estado.PARADO)
+
+func _estado_padrao() -> int:
+	return Estado.PULANDO if pos.y < chao_y else Estado.PARADO
+
+func _mudar_estado(novo: int) -> void:
+	if novo != estado:
+		estado = novo
+		tempo_estado = 0.0
+
+# ---------- Escolha de golpe ----------
+
+func _escolher_golpe(apertados: Dictionary) -> Dictionary:
+	var melhor: Dictionary = {}
+	var melhor_nota: int = -1
+	for g in golpes:
+		if not apertados.get(g.botao, false):
+			continue
+		if g.carga == "tras" and charge_tras < float(g.carga_seg):
+			continue
+		if g.carga == "baixo" and charge_baixo < float(g.carga_seg):
+			continue
+		if g.so_ar and pos.y >= chao_y:
+			continue
+		if float(g.custo) > energia.valor:
+			continue
+		var nota: int = int(g.forca) + (10 if g.carga != "nenhuma" else 0)
+		if nota > melhor_nota:
+			melhor_nota = nota
+			melhor = g
+	return melhor
+
+func _pode_cancelar_para(g: Dictionary) -> bool:
+	if estado != Estado.ATACANDO:
+		return true
+	return int(g.forca) > int(golpe_atual.forca)
+
+func _executar(g: Dictionary, guard_cancel: bool = false) -> void:
+	if not guard_cancel and float(g.custo) > 0.0:
+		if not energia.gastar(float(g.custo)):
+			return
+	golpe_atual = g
+	golpe_acertou = false
+	frame_golpe = 0
+	hitboxes.clear()
+	em_guard_cancel = guard_cancel
+	invulneravel = guard_cancel
+	_mudar_estado(Estado.ATACANDO)
+
+func _processar_ataque() -> void:
+	frame_golpe += 1
+	var s := int(golpe_atual.startup)
+	var a := int(golpe_atual.active)
+	var r := int(golpe_atual.recovery)
+	if frame_golpe >= s and frame_golpe < s + a and not golpe_acertou:
+		if hitboxes.is_empty():
+			var h = golpe_atual.hitbox
+			hitboxes.append(Caixa.new(Caixa.Tipo.ATAQUE, h.x, h.y, h.w, h.h))
+	else:
+		hitboxes.clear()
+	if frame_golpe >= s + a + r:
+		_terminar_ataque()
+
+func _terminar_ataque() -> void:
+	hitboxes.clear()
+	golpe_atual = {}
+	if em_guard_cancel:
+		invulneravel = false
+		em_guard_cancel = false
+	_mudar_estado(_estado_padrao())
+
+# ---------- Esquiva ----------
+
+func _pode_esquivar() -> bool:
+	if estado in [Estado.PARADO, Estado.ANDANDO, Estado.DEFENDENDO]:
+		return true
+	return estado == Estado.CAIDO and not knockdown_sem_recuperacao
+
+func _iniciar_esquiva() -> void:
+	invulneravel = true
+	_mudar_estado(Estado.ESQUIVANDO)
+
+# ---------- Recebimento de golpes ----------
+
+func marcar_acerto(g: Dictionary) -> void:
+	golpe_acertou = true
+	hitboxes.clear()
+	if str(g.carga) != "nenhuma":
+		energia.ganhar(float(g.energia_ganha))
+
+func pode_ser_atingido_por(g: Dictionary) -> bool:
+	if invulneravel or estado == Estado.KO:
+		return false
+	if g.antichao:
+		return estado == Estado.CAIDO
+	return estado != Estado.CAIDO
+
+func receber_golpe(g: Dictionary) -> void:
+	if estado == Estado.DEFENDENDO:
+		frames_hitstun = 10
+		_mudar_estado(Estado.GOLPEADO)
+		return
+	vida.valor = max(vida.valor - float(g.dano), 0.0)
+	if vida.valor <= 0.0:
+		_mudar_estado(Estado.KO)
+		return
+	if g.blowoff:
+		knockdown_sem_recuperacao = true
+		_mudar_estado(Estado.CAIDO)
+	else:
+		frames_hitstun = 18
+		_mudar_estado(Estado.GOLPEADO)
+
+func nome_estado() -> String:
+	return NOMES_ESTADO[estado]
