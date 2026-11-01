@@ -1,17 +1,25 @@
 extends RefCounted
 
+const ESTOQUE: float = 100.0
+const ESTOQUES_MAX: int = 3
+
 var valor: float = 0.0
-var maximo: float = 100.0
+var maximo: float = 300.0
 
-func ganhar(quantidade: float):
-	valor = min(valor + quantidade, maximo * 3)
-	print("Barra aumentou em %.1f. Total atual: %.1f" % [quantidade, valor])
+func _init(p_maximo: float = 300.0) -> void:
+	maximo = p_maximo
 
-func gastar(quantidade: float) -> bool:
-	if valor >= quantidade:
-		valor -= quantidade
-		print("Gastou %.1f de barra. Restante: %.1f" % [quantidade, valor])
-		return true
-	else:
-		print("Barra insuficiente! Precisa de %.1f, tem %.1f" % [quantidade, valor])
+func ganhar(q: float) -> void:
+	valor = minf(maximo, valor + q)
+
+func gastar(q: float) -> bool:
+	if valor < q:
 		return false
+	valor -= q
+	return true
+
+func proporcao() -> float:
+	return valor / maximo
+
+func estoques_disponiveis() -> int:
+	return mini(ESTOQUES_MAX, int(floor(valor / ESTOQUE)))
