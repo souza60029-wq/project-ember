@@ -22,3 +22,6 @@ jobs:
 
       - name: Testes da lógica
         run: timeout 120 ./godot --headless --script teste.gd
+
+      - name: Testes do Main
+        run: timeout 120 ./godot --headless --script teste_visual.gd
