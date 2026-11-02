@@ -53,8 +53,7 @@ func tocar_musica(nome: String, repetir: bool = true) -> void:
 	if stream == null:
 		parar_musica()
 		return
-	if "loop" in stream:
-		stream.loop = repetir
+	_definir_loop(stream, repetir)
 	_musica.stream = stream
 	_musica.play()
 
@@ -94,23 +93,73 @@ func _achar_base(base: String) -> String:
 	return ""
 
 
-# Lê o arquivo direto dos bytes, sem precisar de importação do Godot.
+func _definir_loop(stream, repetir: bool) -> void:
+	if stream is AudioStreamOggVorbis or stream is AudioStreamMP3:
+		stream.loop = repetir
+	elif stream is AudioStreamWAV:
+		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD if repetir else AudioStreamWAV.LOOP_DISABLED
+
+
+# res:// passa pelo importador do Godot (a exportação já importa tudo).
+# user:// não tem importador: lê os bytes direto.
 func _carregar(caminho: String):
 	if caminho == "":
 		return null
 	if _cache.has(caminho):
 		return _cache[caminho]
 	var stream = null
-	var bytes := FileAccess.get_file_as_bytes(caminho)
-	if bytes.size() > 0:
-		match caminho.get_extension().to_lower():
-			"ogg":
-				stream = AudioStreamOggVorbis.load_from_buffer(bytes)
-			"mp3":
-				var mp3 := AudioStreamMP3.new()
-				mp3.data = bytes
-				stream = mp3
-			"wav":
-				stream = AudioStreamWAV.load_from_buffer(bytes)
+	if caminho.begins_with("res://"):
+		stream = load(caminho)
+	else:
+		stream = _carregar_de_bytes(caminho)
 	_cache[caminho] = stream
 	return stream
+
+
+func _carregar_de_bytes(caminho: String):
+	var bytes := FileAccess.get_file_as_bytes(caminho)
+	if bytes.is_empty():
+		return null
+	match caminho.get_extension().to_lower():
+		"mp3":
+			var mp3 := AudioStreamMP3.new()
+			mp3.data = bytes
+			return mp3
+		"wav":
+			return _wav_de_bytes(bytes)
+		"ogg":
+			push_warning("OGG de pasta do usuário ainda não é suportado: " + caminho + " (use WAV ou MP3)")
+			return null
+	return null
+
+
+# Lê um WAV PCM de 16 bits direto dos bytes (formato 1, sem compressão).
+func _wav_de_bytes(b: PackedByteArray) -> AudioStreamWAV:
+	if b.size() < 12 or b.slice(0, 4).get_string_from_ascii() != "RIFF" or b.slice(8, 12).get_string_from_ascii() != "WAVE":
+		return null
+	var pos := 12
+	var formato := -1
+	var canais := 1
+	var taxa := 44100
+	var bits := 16
+	var dados := PackedByteArray()
+	while pos + 8 <= b.size():
+		var id := b.slice(pos, pos + 4).get_string_from_ascii()
+		var tam := b.decode_u32(pos + 4)
+		var ini := pos + 8
+		if id == "fmt " and ini + 16 <= b.size():
+			formato = b.decode_u16(ini)
+			canais = b.decode_u16(ini + 2)
+			taxa = b.decode_u32(ini + 4)
+			bits = b.decode_u16(ini + 14)
+		elif id == "data":
+			dados = b.slice(ini, mini(ini + tam, b.size()))
+		pos = ini + tam + (tam & 1)
+	if formato != 1 or bits != 16 or dados.is_empty():
+		return null
+	var s := AudioStreamWAV.new()
+	s.format = AudioStreamWAV.FORMAT_16_BITS
+	s.mix_rate = taxa
+	s.stereo = canais == 2
+	s.data = dados
+	return s
