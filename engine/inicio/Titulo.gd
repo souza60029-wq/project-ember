@@ -1,6 +1,7 @@
 extends Control
 
 # Tela de título: espera START (ou A) no controle, ou um toque na tela.
+# Texto: "TOQUE NA TELA" com toque; "APERTE START" quando o modo ativo é controle.
 # Logo em ui/logo.png; fundo em ui/fundo_titulo.png (opcional); música em musica/titulo.
 # Autoloads são acessados por get_node (não pelo nome), para o script compilar sem eles.
 
@@ -9,6 +10,7 @@ const LOGO := "res://ui/logo.png"
 const VIEW_W := 960.0
 const VIEW_H := 540.0
 const PISCAR_VELOCIDADE := 3.0
+const Y_TEXTO := 440.0
 
 var _fundo: Texture2D = null
 var _logo: Texture2D = null
@@ -18,6 +20,14 @@ var _saindo := false
 
 func _audio() -> Variant:
 	return get_node("/root/Audio")
+
+
+func _config() -> Variant:
+	return get_node("/root/Config")
+
+
+func _textos() -> Variant:
+	return get_node("/root/Textos")
 
 
 func _navegacao() -> Variant:
@@ -39,6 +49,11 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+func _texto_entrada() -> String:
+	var controle: bool = str(_config().modo_efetivo()) == "controle"
+	return str(_textos().t("tela_start" if controle else "tela_toque"))
+
+
 func _draw() -> void:
 	if _fundo != null:
 		draw_texture_rect(_fundo, Rect2(0.0, 0.0, VIEW_W, VIEW_H), false)
@@ -50,7 +65,7 @@ func _draw() -> void:
 		var w := tam * escala
 		draw_texture_rect(_logo, Rect2((VIEW_W - w.x) * 0.5, 60.0, w.x, w.y), false)
 	var brilho := 0.5 + 0.5 * sin(_tempo * PISCAR_VELOCIDADE)
-	draw_string(ThemeDB.fallback_font, Vector2(0.0, 440.0), "TOQUE NA TELA OU APERTE START", HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 20, Color(1.0, 1.0, 1.0, 0.4 + 0.6 * brilho))
+	draw_string(ThemeDB.fallback_font, Vector2(0.0, Y_TEXTO), _texto_entrada(), HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 20, Color(1.0, 1.0, 1.0, 0.4 + 0.6 * brilho))
 
 
 func _unhandled_input(ev: InputEvent) -> void:
