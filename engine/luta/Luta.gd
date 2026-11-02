@@ -326,8 +326,6 @@ func _desenhar_hud() -> void:
 	var r2 := Rect2(530.0, 60.0, 410.0, 16.0)
 	_barra_vida(r1, p1, false, COR_P1, COR_P1_FUNDO)
 	_barra_vida(r2, p2, true, COR_P2, COR_P2_FUNDO)
-	_barra_dano(r1, p1, false)
-	_barra_dano(r2, p2, true)
 	_barra_energia(Rect2(20.0, 82.0, 300.0, 8.0), p1, false)
 	_barra_energia(Rect2(640.0, 82.0, 300.0, 8.0), p2, true)
 	_texto(nome_p1, Vector2(20.0, 54.0), 14)
@@ -342,31 +340,32 @@ func _desenhar_hud() -> void:
 	if p1.estado == Personagem.Estado.KO or p2.estado == Personagem.Estado.KO:
 		draw_string(ThemeDB.fallback_font, Vector2(0.0, 220.0), "K.O.", HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 56, Color(1.0, 0.3, 0.3))
 
+# Barra de vida com a barra de dano ATRÁS dela, na mesma posição e altura.
+# Ordem: fundo, faixa amarela (dano do combo), vida por cima.
+# A faixa aparece só entre a vida atual e a vida que o defensor tinha antes do combo.
+# Some quando o combo para de contar (_expirar_combo zera dano_combo).
 func _barra_vida(r: Rect2, p, da_direita: bool, cor: Color, fundo: Color) -> void:
 	draw_rect(r, fundo)
-	var prop: float = clampf(float(p.vida) / Personagem.VIDA_MAX, 0.0, 1.0)
-	var w: float = r.size.x * prop
+	var atual: float = clampf(float(p.vida) / Personagem.VIDA_MAX, 0.0, 1.0)
+	var antes: float = clampf((float(p.vida) + float(p.dano_combo)) / Personagem.VIDA_MAX, 0.0, 1.0)
+	if float(p.dano_combo) > 0.0 and antes > atual:
+		draw_rect(_faixa_dano(r, atual, antes, da_direita), COR_DANO)
+	var w: float = r.size.x * atual
 	var x: float = r.position.x + (r.size.x - w if da_direita else 0.0)
 	draw_rect(Rect2(x, r.position.y, w, r.size.y), cor)
 	draw_rect(r, Color(1.0, 1.0, 1.0, 0.8), false, 1.0)
 
-# Barra fina amarela, logo abaixo da vida: mostra quanto o combo atual tirou.
-# Some quando o combo para de contar (ver _expirar_combo).
-func _barra_dano(r: Rect2, p, da_direita: bool) -> void:
-	if p.dano_combo <= 0.0:
-		return
-	var atual: float = clampf(float(p.vida) / Personagem.VIDA_MAX, 0.0, 1.0)
-	var antes: float = clampf((float(p.vida) + float(p.dano_combo)) / Personagem.VIDA_MAX, 0.0, 1.0)
-	var y: float = r.position.y + r.size.y + 1.0
+# Retângulo entre a proporção atual (de) e a proporção de antes do combo (ate).
+func _faixa_dano(r: Rect2, de: float, ate: float, da_direita: bool) -> Rect2:
 	var x0: float
 	var x1: float
 	if da_direita:
-		x0 = r.position.x + r.size.x * (1.0 - antes)
-		x1 = r.position.x + r.size.x * (1.0 - atual)
+		x0 = r.position.x + r.size.x * (1.0 - ate)
+		x1 = r.position.x + r.size.x * (1.0 - de)
 	else:
-		x0 = r.position.x + r.size.x * atual
-		x1 = r.position.x + r.size.x * antes
-	draw_rect(Rect2(x0, y, x1 - x0, 4.0), COR_DANO)
+		x0 = r.position.x + r.size.x * de
+		x1 = r.position.x + r.size.x * ate
+	return Rect2(x0, r.position.y, x1 - x0, r.size.y)
 
 func _barra_energia(r: Rect2, p, da_direita: bool) -> void:
 	draw_rect(r, Color(0.15, 0.15, 0.2))
