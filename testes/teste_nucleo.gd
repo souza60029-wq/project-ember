@@ -91,9 +91,17 @@ func _testar_caixa_barra() -> void:
 	_checar("hitbox olhando para a direita", r.position == Vector2(130.0, 380.0))
 	_checar("colisão simples", Caixa.colidem(Rect2(0, 0, 10, 10), Rect2(5, 5, 10, 10)))
 	_checar("encostando não colide", not Caixa.colidem(Rect2(0, 0, 10, 10), Rect2(10, 0, 10, 10)))
-	var b = Barra.new(300.0)
-	b.ganhar(120.0)
-	_checar("barra ganha energia", absf(float(b.valor) - 120.0) < 0.001)
+
+	var b = Barra.new()
+	_checar("barra começa sem estoque", b.estoques_disponiveis() == 0)
+	b.ganhar(100.0)
+	_checar("ganho sai 20% mais rápido (100 vira 120)", absf(float(b.valor) - 120.0) < 0.001)
+	_checar("120 já é 1 estoque", b.estoques_disponiveis() == 1)
+	b.ganhar(1000.0)
+	_checar("barra enche em 500 (5 estoques)", absf(float(b.valor) - 500.0) < 0.001)
+	_checar("5 estoques quando cheia", b.estoques_disponiveis() == 5)
+	_checar("gastar meia barra com barra cheia", b.gastar(Barra.MEIA_BARRA) and absf(float(b.valor) - 450.0) < 0.001)
+	_checar("gastar sem energia é recusado", not b.gastar(9999.0))
 
 func _testar_eventos() -> void:
 	print("Eventos de som")
