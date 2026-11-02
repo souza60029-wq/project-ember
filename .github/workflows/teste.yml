@@ -8,20 +8,25 @@ jobs:
   testar:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
-      - name: Baixar código
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Baixar Godot 4.2.2 (Linux)
+      - name: Baixar Godot 4.2.2
         run: |
           wget -q https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_linux.x86_64.zip -O godot.zip
           unzip -q godot.zip
           mv Godot_v4.2.2-stable_linux.x86_64 godot
           chmod +x godot
 
-      - name: Testes da lógica
-        run: timeout 120 ./godot --headless --script teste.gd
+      - name: Testes de lógica
+        run: timeout 120 ./godot --headless --script testes/teste_nucleo.gd
 
-      - name: Testes do Main
-        run: timeout 120 ./godot --headless --script teste_visual.gd
+      - name: Abrir o projeto (checa scripts e cenas)
+        run: |
+          set -o pipefail
+          timeout 120 ./godot --headless --quit-after 180 2>&1 | tee log_projeto.txt
+          if grep -q "SCRIPT ERROR\|Parse Error" log_projeto.txt; then
+            echo "Erro de script ao abrir o projeto"
+            exit 1
+          fi
