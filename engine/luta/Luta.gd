@@ -34,6 +34,9 @@ const COR_P2 := Color(0.2, 0.5, 1.0)
 const COR_P2_FUNDO := Color(0.05, 0.12, 0.3)
 const COR_DANO := Color(1.0, 0.9, 0.2)
 
+# Altura da faixa de dano em relação à barra de vida (0.35 = 35%).
+const FRACAO_FAIXA_DANO := 0.35
+
 var p1 = Personagem.new()
 var p2 = Personagem.new()
 var nome_p1: String = "Sem personagem"
@@ -340,8 +343,8 @@ func _desenhar_hud() -> void:
 	if p1.estado == Personagem.Estado.KO or p2.estado == Personagem.Estado.KO:
 		draw_string(ThemeDB.fallback_font, Vector2(0.0, 220.0), "K.O.", HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 56, Color(1.0, 0.3, 0.3))
 
-# Barra de vida com a barra de dano ATRÁS dela, na mesma posição e altura.
-# Ordem: fundo, faixa amarela (dano do combo), vida por cima.
+# Barra de vida com a barra de dano ATRÁS dela.
+# Ordem: fundo, faixa amarela fina (dano do combo), vida por cima.
 # A faixa aparece só entre a vida atual e a vida que o defensor tinha antes do combo.
 # Some quando o combo para de contar (_expirar_combo zera dano_combo).
 func _barra_vida(r: Rect2, p, da_direita: bool, cor: Color, fundo: Color) -> void:
@@ -355,7 +358,8 @@ func _barra_vida(r: Rect2, p, da_direita: bool, cor: Color, fundo: Color) -> voi
 	draw_rect(Rect2(x, r.position.y, w, r.size.y), cor)
 	draw_rect(r, Color(1.0, 1.0, 1.0, 0.8), false, 1.0)
 
-# Retângulo entre a proporção atual (de) e a proporção de antes do combo (ate).
+# Faixa fina, centralizada na altura da barra, entre a proporção atual (de)
+# e a proporção de antes do combo (ate).
 func _faixa_dano(r: Rect2, de: float, ate: float, da_direita: bool) -> Rect2:
 	var x0: float
 	var x1: float
@@ -365,7 +369,9 @@ func _faixa_dano(r: Rect2, de: float, ate: float, da_direita: bool) -> Rect2:
 	else:
 		x0 = r.position.x + r.size.x * de
 		x1 = r.position.x + r.size.x * ate
-	return Rect2(x0, r.position.y, x1 - x0, r.size.y)
+	var h: float = r.size.y * FRACAO_FAIXA_DANO
+	var y: float = r.position.y + (r.size.y - h) * 0.5
+	return Rect2(x0, y, x1 - x0, h)
 
 func _barra_energia(r: Rect2, p, da_direita: bool) -> void:
 	draw_rect(r, Color(0.15, 0.15, 0.2))
