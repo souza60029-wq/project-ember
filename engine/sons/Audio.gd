@@ -2,6 +2,7 @@ extends Node
 
 # Toca sons e músicas. Só olha pastas, não sabe nada sobre o seu jogo.
 # Ordem de busca de um evento: som do golpe → som do personagem → comum → silêncio.
+# Música: troca com fade cruzado (a atual desce e a nova sobe, 0,5 s cada).
 
 const Eventos = preload("res://engine/sons/Eventos.gd")
 
@@ -11,10 +12,15 @@ const PASTA_MUSICA := "res://musica/"
 const PASTAS_PERSONAGEM := ["res://personagens/", "user://personagens/"]
 const EXTENSOES := ["ogg", "mp3", "wav"]
 const CANAIS := 8
+const FADE_MUSICA := 0.5
+const VOLUME_MUDO := -60.0
 
 var _canais: Array[AudioStreamPlayer] = []
-var _musica: AudioStreamPlayer
+var _musicas: Array[AudioStreamPlayer] = []
+var _ativa: int = 0
+var _nome_musica: String = ""
 var _cache := {}
+var _fades := {}
 
 
 func _ready() -> void:
@@ -22,8 +28,11 @@ func _ready() -> void:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
 		_canais.append(p)
-	_musica = AudioStreamPlayer.new()
-	add_child(_musica)
+	for i in 2:
+		var m := AudioStreamPlayer.new()
+		m.volume_db = VOLUME_MUDO
+		add_child(m)
+		_musicas.append(m)
 
 
 # Devolve o caminho do arquivo que deve tocar, ou "" se não existir nenhum.
@@ -49,17 +58,39 @@ func tocar_interface(nome: String) -> void:
 
 
 func tocar_musica(nome: String, repetir: bool = true) -> void:
+	if nome == _nome_musica and _musicas[_ativa].playing:
+		return
 	var stream = _carregar(_achar_base(PASTA_MUSICA + nome))
+	var saindo: AudioStreamPlayer = _musicas[_ativa]
+	_ativa = 1 - _ativa
+	var entrando: AudioStreamPlayer = _musicas[_ativa]
+	_nome_musica = nome if stream != null else ""
+	if saindo.playing:
+		_fade(saindo, VOLUME_MUDO, true)
 	if stream == null:
-		parar_musica()
 		return
 	_definir_loop(stream, repetir)
-	_musica.stream = stream
-	_musica.play()
+	entrando.stream = stream
+	entrando.volume_db = VOLUME_MUDO
+	entrando.play()
+	_fade(entrando, 0.0, false)
 
 
 func parar_musica() -> void:
-	_musica.stop()
+	_nome_musica = ""
+	var p: AudioStreamPlayer = _musicas[_ativa]
+	if p.playing:
+		_fade(p, VOLUME_MUDO, true)
+
+
+func _fade(p: AudioStreamPlayer, alvo: float, parar_no_fim: bool) -> void:
+	if _fades.has(p):
+		_fades[p].kill()
+	var t := create_tween()
+	_fades[p] = t
+	t.tween_property(p, "volume_db", alvo, FADE_MUSICA)
+	if parar_no_fim:
+		t.tween_callback(p.stop)
 
 
 func _tocar_efeito(caminho: String) -> void:
