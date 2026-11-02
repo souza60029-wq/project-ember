@@ -1,7 +1,8 @@
 extends Node
 
 # Acha os personagens nas duas pastas e guarda a lista pronta para o menu e o editor.
-# res://personagens/ é o conteúdo do jogo. user://personagens/ é o que foi criado no app.
+# res://personagens/ é o conteúdo do jogo. user://personagens/ é o que foi criado ou editado no app.
+# Se o mesmo id existir nas duas, vale o do app: é a versão que o jogador editou.
 
 const Formato = preload("res://engine/formato/Formato.gd")
 
@@ -72,11 +73,17 @@ func _carregar_pasta(pasta_personagem: String, origem: String) -> void:
 		push_warning("Personagem ignorado (%s): %s" % [pasta_personagem, r["erro"]])
 		return
 	var p: Dictionary = r["personagem"]
-	if _por_id.has(p["id"]):
-		push_warning("ID repetido, ignorado: " + p["id"])
-		return
+	var id: String = p["id"]
+	if _por_id.has(id):
+		var antigo: Dictionary = _por_id[id]
+		# O do app (user://) substitui o do jogo (res://) com o mesmo id.
+		if origem == "usuario" and antigo["origem"] == "jogo":
+			_remover(id)
+		else:
+			push_warning("ID repetido, ignorado (%s): %s" % [origem, id])
+			return
 	var item := {
-		"id": p["id"],
+		"id": id,
 		"nome": p["nome"],
 		"origem": origem,
 		"pasta": pasta_personagem,
@@ -84,4 +91,12 @@ func _carregar_pasta(pasta_personagem: String, origem: String) -> void:
 		"moveset": Formato.moveset(p)
 	}
 	_lista.append(item)
-	_por_id[p["id"]] = item
+	_por_id[id] = item
+
+
+func _remover(id: String) -> void:
+	for i in range(_lista.size()):
+		if _lista[i]["id"] == id:
+			_lista.remove_at(i)
+			break
+	_por_id.erase(id)
