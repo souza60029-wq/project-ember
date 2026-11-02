@@ -1,0 +1,48 @@
+{
+  "formato": 1,
+  "id": "boneco_teste",
+  "nome": "Boneco de Teste",
+  "magias": [],
+  "golpes": [
+    {
+      "nome": "Soco Teste",
+      "botao": "LP",
+      "carga": "",
+      "carga_seg": 0.5,
+      "forca": 1,
+      "startup": 3,
+      "active": 2,
+      "recovery": 4,
+      "dano": 10,
+      "custo": 0,
+      "energia_ganha": 0,
+      "antichao": false,
+      "blowoff": false,
+      "so_ar": false,
+      "hitbox": {"x": 30, "y": -100, "w": 40, "h": 30},
+      "frames": [],
+      "sons": {"uso": ""},
+      "efeitos": {"acerto": {"frames": [], "som": ""}, "bloqueio": {"frames": [], "som": ""}}
+    },
+    {
+      "nome": "Chute Teste",
+      "botao": "HK",
+      "carga": "baixo",
+      "carga_seg": 0.5,
+      "forca": 3,
+      "startup": 6,
+      "active": 3,
+      "recovery": 10,
+      "dano": 60,
+      "custo": 0,
+      "energia_ganha": 30,
+      "antichao": false,
+      "blowoff": false,
+      "so_ar": false,
+      "hitbox": {"x": 30, "y": -60, "w": 60, "h": 30},
+      "frames": [],
+      "sons": {"uso": ""},
+      "efeitos": {"acerto": {"frames": [], "som": ""}, "bloqueio": {"frames": [], "som": ""}}
+    }
+  ]
+}
