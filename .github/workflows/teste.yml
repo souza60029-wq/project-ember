@@ -8,6 +8,7 @@ jobs:
   testar:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,13 +21,19 @@ jobs:
           chmod +x godot
 
       - name: Testes de lógica
-        run: timeout 120 ./godot --headless --script testes/teste_nucleo.gd
+        run: |
+          set -o pipefail
+          timeout 120 ./godot --headless --script testes/teste_nucleo.gd 2>&1 | tee log_logica.txt
+          if grep -q "SCRIPT ERROR\|Parse Error\|Failed to load script\|FALHA" log_logica.txt; then
+            echo "Erro de script ou teste de lógica falhou"
+            exit 1
+          fi
 
       - name: Abrir o projeto (checa scripts e cenas)
         run: |
           set -o pipefail
           timeout 120 ./godot --headless --quit-after 180 2>&1 | tee log_projeto.txt
-          if grep -q "SCRIPT ERROR\|Parse Error" log_projeto.txt; then
+          if grep -q "SCRIPT ERROR\|Parse Error\|Failed to load script" log_projeto.txt; then
             echo "Erro de script ao abrir o projeto"
             exit 1
           fi
