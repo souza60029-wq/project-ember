@@ -2,18 +2,30 @@ extends RefCounted
 
 # Regras de um lutador: estados, física, golpes e combo.
 # Não desenha nada e não lê arquivos.
+# Pulo: decolagem no chão (4 frames no normal, 2 na sombra). A direção é escolhida
+# na decolagem e fica travada até cair. Sem controle aéreo.
+# Escala: corpo e hitbox crescem; velocidade e altura do pulo ficam em px.
 
-const Caixa = preload("res://engine/nucleo/Caixa.gd")
 const Barra = preload("res://engine/nucleo/Barra.gd")
 const Formato = preload("res://engine/formato/Formato.gd")
 
-enum Estado { PARADO, ANDANDO, PULANDO, DEFENDENDO, ATACANDO, GOLPEADO, CAIDO, LEVANTANDO, ESQUIVANDO, KO }
+enum Estado { PARADO, ANDANDO, PULANDO, DEFENDENDO, ATACANDO, GOLPEADO, CAIDO, LEVANTANDO, ESQUIVANDO, KO, DECOLANDO }
 
-const NOMES_ESTADO := ["PARADO", "ANDANDO", "PULANDO", "DEFENDENDO", "ATACANDO", "GOLPEADO", "CAIDO", "LEVANTANDO", "ESQUIVANDO", "KO"]
+const NOMES_ESTADO := ["PARADO", "ANDANDO", "PULANDO", "DEFENDENDO", "ATACANDO", "GOLPEADO", "CAIDO", "LEVANTANDO", "ESQUIVANDO", "KO", "DECOLANDO"]
 const DT: float = 1.0 / 60.0
 const GRAVIDADE: float = 1800.0
-const VEL_PULO: float = -750.0
-const VEL_PULO_SOMBRA: float = -950.0
+
+# Velocidade inicial do pulo (px/s; negativo sobe).
+# Normal: alto -560 (25% abaixo de -750), baixo -400.
+# Sombra: 25% acima do normal correspondente: alto -700, baixo -500.
+const VEL_NORMAL_ALTO: float = -560.0
+const VEL_NORMAL_BAIXO: float = -400.0
+const VEL_SOMBRA_ALTO: float = -700.0
+const VEL_SOMBRA_BAIXO: float = -500.0
+# Frames de decolagem no chão antes de sair do chão.
+const DECOLAGEM_NORMAL: int = 4
+const DECOLAGEM_SOMBRA: int = 2
+
 const VEL_ANDAR: float = 240.0
 const CHAO_Y: float = 480.0
 const LIMITE_ESQ: float = 40.0
@@ -31,12 +43,15 @@ const CUSTO_ESQUIVA: float = 25.0
 const CUSTO_GUARD_CANCEL: float = 50.0
 const CORPO_LARGURA: float = 50.0
 const CORPO_ALTURA: float = 120.0
+const ESCALA_MIN: float = 0.5
+const ESCALA_MAX: float = 4.0
 const JANELA_PULO_SOMBRA: int = 6
 const JANELA_COMBO: int = 50
 const DIRECAO_SALTO_MIN: float = 0.3
 
 var golpes: Array = []
-var barra = Barra.new(300.0)
+var barra = Barra.new()
+var escala: float = 1.0
 var pos: Vector2 = Vector2.ZERO
 var vel: Vector2 = Vector2.ZERO
 var no_chao: bool = false
@@ -58,6 +73,8 @@ var caido_recuperavel: bool = true
 var carga_tras_t: float = 0.0
 var carga_baixo_t: float = 0.0
 var frames_desde_baixo: int = 999
+var pulo_sombra: bool = false
+var pulo_direcao_x: float = 0.0
 
 # ---------- Ciclo de vida ----------
 
@@ -66,6 +83,19 @@ func definir_golpes(lista: Array) -> void:
 	for g in lista:
 		if typeof(g) == TYPE_DICTIONARY:
 			golpes.append(Formato.normalizar_golpe(g))
+
+
+func definir_escala(e: float) -> void:
+	escala = clampf(e, ESCALA_MIN, ESCALA_MAX)
+
+
+func largura_corpo() -> float:
+	return CORPO_LARGURA * escala
+
+
+func altura_corpo() -> float:
+	return CORPO_ALTURA * escala
+
 
 func resetar(x: float, olhando_direita: bool) -> void:
 	pos = Vector2(x, CHAO_Y)
@@ -89,6 +119,8 @@ func resetar(x: float, olhando_direita: bool) -> void:
 	carga_tras_t = 0.0
 	carga_baixo_t = 0.0
 	frames_desde_baixo = 999
+	pulo_sombra = false
+	pulo_direcao_x = 0.0
 
 # ---------- Entrada e estados ----------
 
@@ -110,6 +142,8 @@ func atualizar(dir: Vector2, apertados: Dictionary) -> void:
 	match estado:
 		Estado.PARADO, Estado.ANDANDO, Estado.PULANDO, Estado.DEFENDENDO:
 			_estado_livre(dir, apertados, atras, cima)
+		Estado.DECOLANDO:
+			_processar_decolagem(dir)
 		Estado.ATACANDO:
 			_processar_ataque()
 		Estado.GOLPEADO:
@@ -122,6 +156,7 @@ func atualizar(dir: Vector2, apertados: Dictionary) -> void:
 		Estado.LEVANTANDO, Estado.ESQUIVANDO:
 			_processar_temporizado()
 	_aplicar_fisica()
+
 
 func _estado_livre(dir: Vector2, apertados: Dictionary, atras: bool, cima: bool) -> void:
 	if apertados.get("ROLL", false) and not no_chao and barra.valor >= CUSTO_ESQUIVA:
@@ -137,11 +172,7 @@ func _estado_livre(dir: Vector2, apertados: Dictionary, atras: bool, cima: bool)
 		estado = Estado.PULANDO
 		return
 	if cima:
-		vel.y = VEL_PULO_SOMBRA if frames_desde_baixo <= JANELA_PULO_SOMBRA else VEL_PULO
-		no_chao = true
-		estado = Estado.PULANDO
-		var x_salto: float = dir.x if absf(dir.x) > DIRECAO_SALTO_MIN else 0.0
-		vel.x = x_salto * VEL_ANDAR
+		_iniciar_decolagem(dir)
 		return
 	if atras:
 		estado = Estado.DEFENDENDO
@@ -152,6 +183,7 @@ func _estado_livre(dir: Vector2, apertados: Dictionary, atras: bool, cima: bool)
 	else:
 		estado = Estado.PARADO
 		vel.x = 0.0
+
 
 func _escolher_golpe(apertados: Dictionary) -> Dictionary:
 	for g in golpes:
@@ -169,6 +201,7 @@ func _escolher_golpe(apertados: Dictionary) -> Dictionary:
 		return d
 	return {}
 
+
 func _executar(g: Dictionary) -> void:
 	if str(g["carga"]) != "":
 		carga_tras_t = 0.0
@@ -184,6 +217,7 @@ func _executar(g: Dictionary) -> void:
 	if not no_chao:
 		vel.x = 0.0
 
+
 func _processar_ataque() -> void:
 	tempo += 1
 	if tempo > total_ataque:
@@ -194,6 +228,35 @@ func _processar_ataque() -> void:
 	if not no_chao:
 		vel.x = 0.0
 
+
+# Decolagem: começa no chão, sem movimento. Ao fim, decide alto ou baixo pelo cima
+# (ainda segurado = alto; já solto = baixo) e sai com a direção escolhida no início.
+func _iniciar_decolagem(dir: Vector2) -> void:
+	pulo_sombra = frames_desde_baixo <= JANELA_PULO_SOMBRA
+	pulo_direcao_x = dir.x if absf(dir.x) > DIRECAO_SALTO_MIN else 0.0
+	estado = Estado.DECOLANDO
+	tempo = 0
+	duracao = DECOLAGEM_SOMBRA if pulo_sombra else DECOLAGEM_NORMAL
+	vel = Vector2.ZERO
+
+
+func _processar_decolagem(dir: Vector2) -> void:
+	tempo += 1
+	vel.x = 0.0
+	if tempo < duracao:
+		return
+	var alto: bool = dir.y < -0.5
+	if pulo_sombra:
+		vel.y = VEL_SOMBRA_ALTO if alto else VEL_SOMBRA_BAIXO
+	else:
+		vel.y = VEL_NORMAL_ALTO if alto else VEL_NORMAL_BAIXO
+	vel.x = pulo_direcao_x * VEL_ANDAR
+	no_chao = true
+	estado = Estado.PULANDO
+	tempo = 0
+	duracao = 0
+
+
 func _iniciar_esquiva() -> void:
 	estado = Estado.ESQUIVANDO
 	tempo = 0
@@ -201,6 +264,7 @@ func _iniciar_esquiva() -> void:
 	golpe_atual = {}
 	bloqueado = false
 	vel.x = -(1.0 if direita else -1.0) * ESQUIVA_VEL
+
 
 func _processar_temporizado() -> void:
 	tempo += 1
@@ -210,6 +274,7 @@ func _processar_temporizado() -> void:
 		vel.x = 0.0
 	if tempo >= duracao:
 		_voltar_neutro()
+
 
 func _processar_caido(apertados: Dictionary) -> void:
 	tempo += 1
@@ -227,11 +292,13 @@ func _processar_caido(apertados: Dictionary) -> void:
 		duracao = LEVANTAR_FRAMES
 		vel.x = 0.0
 
+
 func _processar_golpeado() -> void:
 	tempo += 1
 	vel.x *= 0.85
 	if tempo >= duracao:
 		_voltar_neutro()
+
 
 func _voltar_neutro() -> void:
 	estado = Estado.PULANDO if no_chao else Estado.PARADO
@@ -239,6 +306,7 @@ func _voltar_neutro() -> void:
 	duracao = 0
 	bloqueado = false
 	golpe_atual = {}
+
 
 func _guard_cancel() -> void:
 	barra.gastar(CUSTO_GUARD_CANCEL)
@@ -249,7 +317,10 @@ func _guard_cancel() -> void:
 # ---------- Hitbox e colisão (quem decide o acerto é a Luta) ----------
 
 func corpo_rect() -> Rect2:
-	return Rect2(pos.x - CORPO_LARGURA * 0.5, pos.y - CORPO_ALTURA, CORPO_LARGURA, CORPO_ALTURA)
+	var w: float = largura_corpo()
+	var h: float = altura_corpo()
+	return Rect2(pos.x - w * 0.5, pos.y - h, w, h)
+
 
 func hitbox_ativa() -> bool:
 	if estado != Estado.ATACANDO or golpe_atual.is_empty():
@@ -258,10 +329,17 @@ func hitbox_ativa() -> bool:
 	var fim: int = inicio + int(golpe_atual["active"])
 	return tempo > inicio and tempo <= fim
 
+
+# Hitbox na escala do personagem. Virado para a esquerda, espelha em relação ao corpo.
 func hitbox_rect() -> Rect2:
 	if not hitbox_ativa():
 		return Rect2()
-	return Caixa.rect_hitbox(golpe_atual["hitbox"], pos, direita)
+	var hb: Dictionary = golpe_atual["hitbox"]
+	var x_rel: float = float(hb["x"]) * escala
+	var w: float = float(hb["w"]) * escala
+	var x: float = pos.x + x_rel if direita else pos.x - x_rel - w
+	return Rect2(x, pos.y + float(hb["y"]) * escala, w, float(hb["h"]) * escala)
+
 
 func resultado_para(g: Dictionary) -> String:
 	if estado == Estado.ESQUIVANDO or estado == Estado.LEVANTANDO or estado == Estado.KO:
@@ -275,6 +353,7 @@ func resultado_para(g: Dictionary) -> String:
 		return "bloqueio"
 	return "acerto"
 
+
 func receber_bloqueio(_g: Dictionary) -> void:
 	estado = Estado.GOLPEADO
 	tempo = 0
@@ -282,6 +361,7 @@ func receber_bloqueio(_g: Dictionary) -> void:
 	bloqueado = true
 	golpe_atual = {}
 	vel.x = _empurrao_base() * 60.0
+
 
 func receber_acerto(g: Dictionary, dano: float) -> void:
 	var era_caido: bool = estado == Estado.CAIDO
@@ -305,6 +385,7 @@ func receber_acerto(g: Dictionary, dano: float) -> void:
 		duracao = HITSTUN
 		vel.x = _empurrao_base() * 60.0
 
+
 func receber_blowback(vx: float) -> void:
 	estado = Estado.GOLPEADO
 	tempo = 0
@@ -312,6 +393,7 @@ func receber_blowback(vx: float) -> void:
 	bloqueado = false
 	golpe_atual = {}
 	vel.x = vx
+
 
 func _empurrao_base() -> float:
 	# Empurra para trás, já que o personagem está virado para o oponente
@@ -328,9 +410,13 @@ func _aplicar_fisica() -> void:
 		if no_chao:
 			no_chao = false
 			vel.y = 0.0
+			# Pouso: deslize horizontal do pulo ou do ataque aéreo para no chão.
+			if estado == Estado.PULANDO or estado == Estado.ATACANDO:
+				vel.x = 0.0
 			if estado == Estado.PULANDO:
 				estado = Estado.PARADO
 	pos.x = clampf(pos.x, LIMITE_ESQ, LIMITE_DIR)
+
 
 func nome_estado() -> String:
 	return NOMES_ESTADO[estado]
