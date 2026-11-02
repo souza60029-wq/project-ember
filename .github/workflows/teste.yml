@@ -24,8 +24,17 @@ jobs:
         run: |
           set -o pipefail
           timeout 120 ./godot --headless --script testes/teste_nucleo.gd 2>&1 | tee log_logica.txt
-          if grep -q "SCRIPT ERROR\|Parse Error\|Failed to load script\|FALHA" log_logica.txt; then
+          if grep -q "SCRIPT ERROR\|Parse Error\|Compile Error\|Failed to load script\|FALHA" log_logica.txt; then
             echo "Erro de script ou teste de lógica falhou"
+            exit 1
+          fi
+
+      - name: Testes de edição e backup
+        run: |
+          set -o pipefail
+          timeout 120 ./godot --headless --script testes/teste_pacote.gd 2>&1 | tee log_pacote.txt
+          if grep -q "SCRIPT ERROR\|Parse Error\|Compile Error\|Failed to load script\|FALHA" log_pacote.txt; then
+            echo "Erro no editor, no backup ou teste falhou"
             exit 1
           fi
 
@@ -33,7 +42,7 @@ jobs:
         run: |
           set -o pipefail
           timeout 120 ./godot --headless --quit-after 180 2>&1 | tee log_projeto.txt
-          if grep -q "SCRIPT ERROR\|Parse Error\|Failed to load script" log_projeto.txt; then
+          if grep -q "SCRIPT ERROR\|Parse Error\|Compile Error\|Failed to load script" log_projeto.txt; then
             echo "Erro de script ao abrir o projeto"
             exit 1
           fi
