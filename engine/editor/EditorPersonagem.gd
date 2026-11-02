@@ -3,6 +3,7 @@ extends Control
 # Editor de personagem: criar, editar, salvar e fazer backup (BEP1).
 # Tela montada em código. Lógica de golpes em Edicao.gd, backup em Pacote.gd.
 # Entrada: Menu.modo_editor = "criar" (novo) ou "editar" (lista de personagens).
+# Autoloads são acessados por get_node (não pelo nome), para o script compilar sem eles.
 
 const Formato = preload("res://engine/formato/Formato.gd")
 const Pacote = preload("res://engine/formato/Pacote.gd")
@@ -58,6 +59,18 @@ var _checks := {}
 var _msgs: Array[Label] = []
 
 
+# ---------- Autoloads (acesso em tempo de execução) ----------
+
+func _catalogo() -> Variant:
+	return get_node("/root/Catalogo")
+
+func _navegacao() -> Variant:
+	return get_node("/root/Navegacao")
+
+func _ir_menu() -> void:
+	_navegacao().ir_para_menu()
+
+
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	var fundo := ColorRect.new()
@@ -102,7 +115,7 @@ func _montar_lista() -> void:
 	_vb_lista.add_child(_linha_botoes([
 		_botao("Novo personagem", _novo_personagem),
 		_botao("Colar backup", _colar_backup),
-		_botao("Voltar", Navegacao.ir_para_menu),
+		_botao("Voltar", _ir_menu),
 	]))
 	_msgs.append(_label_msg(_vb_lista))
 	_tela_lista.visible = false
@@ -275,7 +288,7 @@ func _mostrar_lista() -> void:
 	_tela_lista.visible = true
 	_mensagem("")
 	_limpar(_lista_personagens)
-	var itens: Array = Catalogo.lista()
+	var itens: Array = _catalogo().lista()
 	if itens.is_empty():
 		_mensagem("Nenhum personagem ainda.")
 	for item in itens:
@@ -309,7 +322,7 @@ func _voltar_edicao() -> void:
 	if _veio_da_lista:
 		_mostrar_lista()
 	else:
-		Navegacao.ir_para_menu()
+		_ir_menu()
 
 
 func _com_barra(s: String) -> String:
@@ -518,7 +531,7 @@ func _salvar() -> String:
 	if _novo or _pasta_midia == "":
 		_pasta_midia = pasta
 	_novo = false
-	Catalogo.recarregar()
+	_catalogo().recarregar()
 	return ""
 
 
@@ -540,7 +553,7 @@ func _colar_backup() -> void:
 	if not r["ok"]:
 		_mensagem(str(r["erro"]))
 		return
-	Catalogo.recarregar()
+	_catalogo().recarregar()
 	_veio_da_lista = true
 	_abrir(r["personagem"], str(r["pasta"]), false)
 	_mensagem("Importado como '%s'." % str(r["id"]))
