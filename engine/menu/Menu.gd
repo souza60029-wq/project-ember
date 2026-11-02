@@ -1,8 +1,10 @@
 extends Control
 
-# Menu inicial da engine. Tudo desenhado em código, sem arte obrigatória.
+# Menu da engine. Tudo desenhado em código, sem arte obrigatória.
 # Usa ui/fundo_menu.png se existir; senão, cor lisa.
-# Navegação: toque, ou controle (D-pad move, A confirma, B volta).
+# Layout: abas na linha de baixo, lado a lado. O submenu aparece encima da aba selecionada,
+# e o sub-submenu aparece encima do item selecionado.
+# Navegação: toque; controle (D-pad ou analógico esquerdo move, A confirma, B volta).
 # Autoloads são acessados por get_node (não pelo nome), para o script compilar sem eles.
 
 const CENA_EDITOR := "res://engine/editor/EditorPersonagem.tscn"
@@ -13,6 +15,18 @@ const MODOS := ["automatico", "touch", "controle"]
 const IDIOMAS := ["pt", "en"]
 const CFG_CATS := ["cfg_graficos", "cfg_luta", "cfg_controle", "cfg_idioma"]
 const TEMPO_AVISO := 90
+const LIMIAR_STICK := 0.6
+
+# Medidas do layout (fonte única para desenho e toque).
+const MARGEM := 20.0
+const LARGURA_ABA := 170.0
+const PASSO_ABA := 186.0
+const LARGURA_ITEM := 200.0
+const ESPACO_ITEM := 16.0
+const PASSO_ITEM := 216.0
+const Y_ABAS := 462.0
+const Y_SUB := 372.0
+const Y_SUB2 := 290.0
 
 # Pedido para o editor ao abrir: "criar" ou "editar".
 static var modo_editor: String = "editar"
@@ -43,6 +57,7 @@ var cfg_foco: int = 0
 var aviso: String = ""
 var aviso_t: int = 0
 var _fundo: Texture2D = null
+var _eixo_estado: Dictionary = {}
 
 # ---------- Autoloads (acesso em tempo de execução) ----------
 
@@ -124,30 +139,48 @@ func _layout() -> Array:
 		_layout_principal(lista)
 	return lista
 
+# Abas: x inicial para centralizar a linha toda.
+func _x_abas() -> float:
+	var n: int = ARVORE.size()
+	return (VIEW_W - (n * LARGURA_ABA + (n - 1) * ESPACO_ITEM)) * 0.5
+
+# Centro horizontal de uma aba.
+func _centro_aba(i: int) -> float:
+	return _x_abas() + i * PASSO_ABA + LARGURA_ABA * 0.5
+
+# X inicial de uma linha de qtd itens, centralizada em "centro" e presa às bordas da tela.
+func _x_centrado_em(centro: float, qtd: int) -> float:
+	var largura: float = qtd * LARGURA_ITEM + maxi(qtd - 1, 0) * ESPACO_ITEM
+	return clampf(centro - largura * 0.5, MARGEM, VIEW_W - MARGEM - largura)
+
 func _layout_principal(lista: Array) -> void:
 	lista.append(_entrada(Rect2(20.0, 14.0, 170.0, 36.0), "config_abrir", 0, _t("cfg_titulo"), false))
 	var n_abas: int = ARVORE.size()
-	var x0: float = (VIEW_W - (n_abas * 170.0 + (n_abas - 1) * 16.0)) * 0.5
+	var x0: float = _x_abas()
 	for i in range(n_abas):
 		var aba_item: Dictionary = ARVORE[i]
-		var e: Dictionary = _entrada(Rect2(x0 + i * 186.0, 462.0, 170.0, 56.0), "aba", i, _t(str(aba_item["chave"])), i == aba, aba_item)
+		var e: Dictionary = _entrada(Rect2(x0 + i * PASSO_ABA, Y_ABAS, LARGURA_ABA, 56.0), "aba", i, _t(str(aba_item["chave"])), i == aba, aba_item)
 		e["icone"] = str(aba_item["icone"])
 		lista.append(e)
+
+	# Submenu: encima da aba selecionada.
 	var filhos: Array = _filhos_aba()
-	var n: int = filhos.size()
-	var x1: float = (VIEW_W - (n * 200.0 + (n - 1) * 16.0)) * 0.5
-	lista.append(_entrada(Rect2(30.0, 372.0, 56.0, 46.0), "seta_esq", 0, "<", false))
-	lista.append(_entrada(Rect2(874.0, 372.0, 56.0, 46.0), "seta_dir", 0, ">", false))
-	for j in range(n):
+	var x1: float = _x_centrado_em(_centro_aba(aba), filhos.size())
+	lista.append(_entrada(Rect2(30.0, Y_SUB, 56.0, 46.0), "seta_esq", 0, "<", false))
+	lista.append(_entrada(Rect2(874.0, Y_SUB, 56.0, 46.0), "seta_dir", 0, ">", false))
+	for j in range(filhos.size()):
 		var it: Dictionary = filhos[j]
-		lista.append(_entrada(Rect2(x1 + j * 216.0, 372.0, 200.0, 46.0), "sub", j, _t(str(it["chave"])), j == sub, it))
+		lista.append(_entrada(Rect2(x1 + j * PASSO_ITEM, Y_SUB, LARGURA_ITEM, 46.0), "sub", j, _t(str(it["chave"])), j == sub, it))
+
+	# Sub-submenu: encima do item selecionado.
 	if nivel == 2:
 		var filhos2: Array = _filhos_do_sub()
-		var m: int = filhos2.size()
-		var x2: float = (VIEW_W - (m * 200.0 + (m - 1) * 16.0)) * 0.5
-		for k in range(m):
+		var centro_sub: float = x1 + sub * PASSO_ITEM + LARGURA_ITEM * 0.5
+		var x2: float = _x_centrado_em(centro_sub, filhos2.size())
+		for k in range(filhos2.size()):
 			var it2: Dictionary = filhos2[k]
-			lista.append(_entrada(Rect2(x2 + k * 216.0, 290.0, 200.0, 44.0), "sub2", k, _t(str(it2["chave"])), k == sub2, it2))
+			lista.append(_entrada(Rect2(x2 + k * PASSO_ITEM, Y_SUB2, LARGURA_ITEM, 44.0), "sub2", k, _t(str(it2["chave"])), k == sub2, it2))
+
 	if nivel > 0:
 		lista.append(_entrada(Rect2(20.0, 462.0, 150.0, 56.0), "voltar", 0, _t("voltar"), false))
 	lista.append(_entrada(Rect2(0.0, 518.0, VIEW_W, 18.0), "nada", 0, _t("dica_menu"), false))
@@ -213,6 +246,31 @@ func _unhandled_input(ev: InputEvent) -> void:
 	if bt != null and bt.pressed:
 		_botao_controle(int(bt.button_index))
 		get_viewport().set_input_as_handled()
+		return
+	var jm := ev as InputEventJoypadMotion
+	if jm != null:
+		_analogico(jm)
+		get_viewport().set_input_as_handled()
+
+# Analógico esquerdo: dispara uma vez ao passar do limiar, e rearma ao voltar ao centro.
+func _analogico(ev: InputEventJoypadMotion) -> void:
+	var eixo: int = ev.axis
+	if eixo != JOY_AXIS_LEFT_X and eixo != JOY_AXIS_LEFT_Y:
+		return
+	var v: float = ev.axis_value
+	var agora := 0
+	if v > LIMIAR_STICK:
+		agora = 1
+	elif v < -LIMIAR_STICK:
+		agora = -1
+	var antes: int = int(_eixo_estado.get(eixo, 0))
+	_eixo_estado[eixo] = agora
+	if agora == 0 or agora == antes:
+		return
+	if eixo == JOY_AXIS_LEFT_X:
+		_botao_controle(JOY_BUTTON_DPAD_RIGHT if agora > 0 else JOY_BUTTON_DPAD_LEFT)
+	else:
+		_botao_controle(JOY_BUTTON_DPAD_DOWN if agora > 0 else JOY_BUTTON_DPAD_UP)
 
 func _tocar(p: Vector2) -> void:
 	var e: Dictionary = _acertar(p)
@@ -326,6 +384,7 @@ func _confirmar() -> void:
 		_executar(f[sub2])
 
 func _voltar() -> void:
+	_som("menu_voltar")
 	if config_aberto:
 		if config_nivel == 1:
 			config_nivel = 0
