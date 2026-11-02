@@ -2,10 +2,18 @@ config_version=5
 
 [application]
 
-config/name="KOF Engine Teste"
-config/icon="res://icon.svg"
-run/main_scene="res://Main.tscn"
+config/name="Battle Engine Mobile"
+config/icon="res://icon.png"
+run/main_scene="res://engine/menu/Menu.tscn"
 config/features=PackedStringArray("4.2")
+
+[autoload]
+
+Config="*res://engine/config/Config.gd"
+Textos="*res://engine/config/Textos.gd"
+Audio="*res://engine/sons/Audio.gd"
+Navegacao="*res://engine/navegacao/Navegacao.gd"
+Catalogo="*res://engine/catalogo/Catalogo.gd"
 
 [display]
 
@@ -14,6 +22,10 @@ window/size/viewport_height=540
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation="landscape"
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
 
 [rendering]
 
