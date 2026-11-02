@@ -3,6 +3,7 @@ extends Control
 # Menu inicial da engine. Tudo desenhado em código, sem arte obrigatória.
 # Usa ui/fundo_menu.png se existir; senão, cor lisa.
 # Navegação: toque, ou controle (D-pad move, A confirma, B volta).
+# Autoloads são acessados por get_node (não pelo nome), para o script compilar sem eles.
 
 const CENA_EDITOR := "res://engine/editor/EditorPersonagem.tscn"
 const FUNDO := "res://ui/fundo_menu.png"
@@ -43,6 +44,23 @@ var aviso: String = ""
 var aviso_t: int = 0
 var _fundo: Texture2D = null
 
+# ---------- Autoloads (acesso em tempo de execução) ----------
+
+func _audio() -> Variant:
+	return get_node("/root/Audio")
+
+func _config() -> Variant:
+	return get_node("/root/Config")
+
+func _textos() -> Variant:
+	return get_node("/root/Textos")
+
+func _navegacao() -> Variant:
+	return get_node("/root/Navegacao")
+
+func _t(chave: String) -> String:
+	return str(_textos().t(chave))
+
 # ---------- Ciclo de vida ----------
 
 func _ready() -> void:
@@ -50,7 +68,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if ResourceLoader.exists(FUNDO):
 		_fundo = load(FUNDO) as Texture2D
-	Audio.tocar_musica("menu", true)
+	_audio().tocar_musica("menu", true)
 
 func _process(_delta: float) -> void:
 	if aviso_t > 0:
@@ -107,12 +125,12 @@ func _layout() -> Array:
 	return lista
 
 func _layout_principal(lista: Array) -> void:
-	lista.append(_entrada(Rect2(20.0, 14.0, 170.0, 36.0), "config_abrir", 0, Textos.t("cfg_titulo"), false))
+	lista.append(_entrada(Rect2(20.0, 14.0, 170.0, 36.0), "config_abrir", 0, _t("cfg_titulo"), false))
 	var n_abas: int = ARVORE.size()
 	var x0: float = (VIEW_W - (n_abas * 170.0 + (n_abas - 1) * 16.0)) * 0.5
 	for i in range(n_abas):
 		var aba_item: Dictionary = ARVORE[i]
-		var e: Dictionary = _entrada(Rect2(x0 + i * 186.0, 462.0, 170.0, 56.0), "aba", i, Textos.t(str(aba_item["chave"])), i == aba, aba_item)
+		var e: Dictionary = _entrada(Rect2(x0 + i * 186.0, 462.0, 170.0, 56.0), "aba", i, _t(str(aba_item["chave"])), i == aba, aba_item)
 		e["icone"] = str(aba_item["icone"])
 		lista.append(e)
 	var filhos: Array = _filhos_aba()
@@ -122,34 +140,34 @@ func _layout_principal(lista: Array) -> void:
 	lista.append(_entrada(Rect2(874.0, 372.0, 56.0, 46.0), "seta_dir", 0, ">", false))
 	for j in range(n):
 		var it: Dictionary = filhos[j]
-		lista.append(_entrada(Rect2(x1 + j * 216.0, 372.0, 200.0, 46.0), "sub", j, Textos.t(str(it["chave"])), j == sub, it))
+		lista.append(_entrada(Rect2(x1 + j * 216.0, 372.0, 200.0, 46.0), "sub", j, _t(str(it["chave"])), j == sub, it))
 	if nivel == 2:
 		var filhos2: Array = _filhos_do_sub()
 		var m: int = filhos2.size()
 		var x2: float = (VIEW_W - (m * 200.0 + (m - 1) * 16.0)) * 0.5
 		for k in range(m):
 			var it2: Dictionary = filhos2[k]
-			lista.append(_entrada(Rect2(x2 + k * 216.0, 290.0, 200.0, 44.0), "sub2", k, Textos.t(str(it2["chave"])), k == sub2, it2))
+			lista.append(_entrada(Rect2(x2 + k * 216.0, 290.0, 200.0, 44.0), "sub2", k, _t(str(it2["chave"])), k == sub2, it2))
 	if nivel > 0:
-		lista.append(_entrada(Rect2(20.0, 462.0, 150.0, 56.0), "voltar", 0, Textos.t("voltar"), false))
-	lista.append(_entrada(Rect2(0.0, 518.0, VIEW_W, 18.0), "nada", 0, Textos.t("dica_menu"), false))
+		lista.append(_entrada(Rect2(20.0, 462.0, 150.0, 56.0), "voltar", 0, _t("voltar"), false))
+	lista.append(_entrada(Rect2(0.0, 518.0, VIEW_W, 18.0), "nada", 0, _t("dica_menu"), false))
 
 func _layout_config(lista: Array) -> void:
-	lista.append(_entrada(Rect2(40.0, 40.0, 300.0, 44.0), "nada", 0, Textos.t("cfg_titulo"), false))
+	lista.append(_entrada(Rect2(40.0, 40.0, 300.0, 44.0), "nada", 0, _t("cfg_titulo"), false))
 	if config_nivel == 0:
 		for i in range(CFG_CATS.size()):
-			lista.append(_entrada(Rect2(40.0, 110.0 + i * 64.0, 300.0, 52.0), "cfg_cat", i, Textos.t(CFG_CATS[i]), i == config_cat))
+			lista.append(_entrada(Rect2(40.0, 110.0 + i * 64.0, 300.0, 52.0), "cfg_cat", i, _t(CFG_CATS[i]), i == config_cat))
 	else:
 		var ops: Array = _opcoes_cfg(config_cat)
 		if ops.is_empty():
-			lista.append(_entrada(Rect2(380.0, 110.0, 340.0, 52.0), "nada", 0, Textos.t("em_breve"), false))
+			lista.append(_entrada(Rect2(380.0, 110.0, 340.0, 52.0), "nada", 0, _t("em_breve"), false))
 		for j in range(ops.size()):
 			var op: Dictionary = ops[j]
-			lista.append(_entrada(Rect2(380.0, 110.0 + j * 64.0, 340.0, 52.0), "cfg_opt", j, Textos.t(str(op["chave"])), bool(op["ativo"])))
+			lista.append(_entrada(Rect2(380.0, 110.0 + j * 64.0, 340.0, 52.0), "cfg_opt", j, _t(str(op["chave"])), bool(op["ativo"])))
 		if config_cat == 2:
-			var info: String = Textos.t("modo_ativo") + ": " + Textos.t("modo_" + Config.modo_efetivo())
+			var info: String = _t("modo_ativo") + ": " + _t("modo_" + str(_config().modo_efetivo()))
 			lista.append(_entrada(Rect2(380.0, 420.0, 340.0, 30.0), "nada", 0, info, false))
-	lista.append(_entrada(Rect2(40.0, 470.0, 160.0, 50.0), "cfg_voltar", 0, Textos.t("voltar"), false))
+	lista.append(_entrada(Rect2(40.0, 470.0, 160.0, 50.0), "cfg_voltar", 0, _t("voltar"), false))
 	var f: Array = _focaveis_cfg(lista)
 	if not f.is_empty():
 		var marcado: Dictionary = f[posmod(cfg_foco, f.size())]
@@ -159,10 +177,10 @@ func _opcoes_cfg(cat: int) -> Array:
 	var r: Array = []
 	if cat == 2:
 		for m in MODOS:
-			r.append({"chave": "modo_" + str(m), "ativo": Config.modo_escolhido == str(m)})
+			r.append({"chave": "modo_" + str(m), "ativo": _config().modo_escolhido == str(m)})
 	elif cat == 3:
 		for c in IDIOMAS:
-			r.append({"chave": "idioma_" + str(c), "ativo": Config.idioma == str(c)})
+			r.append({"chave": "idioma_" + str(c), "ativo": _config().idioma == str(c)})
 	return r
 
 func _focaveis_cfg(lista: Array) -> Array:
@@ -332,9 +350,9 @@ func _acionar_foco_cfg() -> void:
 
 func _aplicar_cfg(j: int) -> void:
 	if config_cat == 2 and j < MODOS.size():
-		Config.definir_modo(MODOS[j])
+		_config().definir_modo(MODOS[j])
 	elif config_cat == 3 and j < IDIOMAS.size():
-		Config.definir_idioma(IDIOMAS[j])
+		_config().definir_idioma(IDIOMAS[j])
 	_som("menu_confirma")
 
 # ---------- Ações ----------
@@ -344,7 +362,7 @@ func _executar(item: Dictionary) -> void:
 	match acao:
 		"treino":
 			_som("menu_confirma")
-			Navegacao.ir_para_luta()
+			_navegacao().ir_para_luta()
 		"criar", "editar":
 			if ResourceLoader.exists(CENA_EDITOR):
 				_som("menu_confirma")
@@ -356,8 +374,8 @@ func _executar(item: Dictionary) -> void:
 			_avisar()
 
 func _avisar() -> void:
-	aviso = Textos.t("em_breve")
+	aviso = _t("em_breve")
 	aviso_t = TEMPO_AVISO
 
 func _som(nome: String) -> void:
-	Audio.tocar_interface(nome)
+	_audio().tocar_interface(nome)
