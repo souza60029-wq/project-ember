@@ -1,6 +1,6 @@
 extends Node
 
-# Textos do motor: menu, configurações e botões fixos.
+# Textos do motor: menu, configurações, título e botões fixos.
 # Cada chave tem português (pt) e inglês (en).
 
 const TABELA := {
@@ -10,6 +10,7 @@ const TABELA := {
 	"mp_local": {"pt": "Local", "en": "Local"},
 	"mp_online": {"pt": "On-line", "en": "Online"},
 	"sub_arcade": {"pt": "Arcade", "en": "Arcade"},
+	"sub_classico": {"pt": "Clássico", "en": "Classic"},
 	"sub_historia": {"pt": "História", "en": "Story"},
 	"sub_treino": {"pt": "Treino", "en": "Training"},
 	"sub_criar": {"pt": "Criar personagem", "en": "Create character"},
@@ -27,6 +28,8 @@ const TABELA := {
 	"modo_ativo": {"pt": "Modo ativo", "en": "Active mode"},
 	"idioma_pt": {"pt": "Português", "en": "Português"},
 	"idioma_en": {"pt": "English", "en": "English"},
+	"tela_toque": {"pt": "TOQUE NA TELA", "en": "TOUCH THE SCREEN"},
+	"tela_start": {"pt": "APERTE START", "en": "PRESS START"},
 	"voltar": {"pt": "Voltar", "en": "Back"},
 	"em_breve": {"pt": "Em breve", "en": "Coming soon"},
 	"menu_luta": {"pt": "MENU", "en": "MENU"},
