@@ -1,7 +1,9 @@
 extends SceneTree
 
-# Testa a edição de golpes (Edicao), o backup BEP1 (Pacote) e se o editor compila.
+# Testa a edição de golpes (Edicao) e o backup BEP1 (Pacote).
 # Não depende de autoloads. Grava só em user:// e apaga ao final.
+# A compilação de Menu.gd e EditorPersonagem.gd não fica aqui: eles usam autoloads
+# (Audio, Navegacao), que não existem no modo --script.
 
 const Formato = preload("res://engine/formato/Formato.gd")
 const Edicao = preload("res://engine/editor/Edicao.gd")
@@ -19,8 +21,6 @@ func _init() -> void:
 	_testar_edicao()
 	print("Backup BEP1")
 	_testar_backup()
-	print("Compilação")
-	_testar_compilacao()
 	_apagar_pasta(PASTA_ORIGEM)
 	_apagar_pasta("user://personagens/" + ID_TESTE + "/")
 	_apagar_pasta("user://personagens/" + ID_TESTE + "_2/")
@@ -73,16 +73,6 @@ func _testar_backup() -> void:
 	var i2: Dictionary = Pacote.importar(texto)
 	_checar("id repetido vira _2", str(i2.get("id", "")) == ID_TESTE + "_2")
 	_checar("texto inválido recusado", not Pacote.importar("abc")["ok"])
-
-
-func _testar_compilacao() -> void:
-	for caminho in [
-		"res://engine/menu/Menu.gd",
-		"res://engine/editor/Edicao.gd",
-		"res://engine/editor/EditorPersonagem.gd",
-		"res://engine/formato/Pacote.gd",
-	]:
-		_checar("compila " + caminho.get_file(), load(caminho) != null)
 
 
 func _preparar_origem() -> void:
