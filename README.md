@@ -2,7 +2,7 @@
 
 # Ember (engine de jogos de luta)
 
-Duas partes separadas: **engine** (`engine/`: combate, menus, editor) e **seu jogo** (`ui/`, `musica/`, `sons/`, `personagens/`).
+Duas partes separadas: **engine** (`engine/`: combate, menus, editor) e **Conteúdo próprio** (`ui/`, `musica/`, `sons/`, `personagens/`).
 Veja `ui/LEIA-ME.md` e `sons/interface/LEIA-ME.md` para saber onde colocar cada arte, música e som.
 
 ## Fluxo
