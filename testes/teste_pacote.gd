@@ -46,6 +46,10 @@ func _testar_edicao() -> void:
 	while Edicao.inserir_golpe(p, 0):
 		pass
 	_checar("limite de 40 golpes", golpes.size() == Formato.MAX_GOLPES)
+	var q: Dictionary = Edicao.novo_personagem("Q", "q")
+	_checar("adiciona golpe fixo LP", Edicao.adicionar_base(q, "LP") == 0)
+	_checar("não duplica golpe fixo", Edicao.adicionar_base(q, "LP") == 0 and (q["golpes"] as Array).size() == 1)
+	_checar("golpe fixo só troca sprites e som", Edicao.chave_editavel(q["golpes"][0], "frames") and not Edicao.chave_editavel(q["golpes"][0], "dano"))
 
 
 func _testar_backup() -> void:
@@ -81,6 +85,11 @@ func _testar_compilacao() -> void:
 		"res://engine/editor/Edicao.gd",
 		"res://engine/editor/EditorPersonagem.gd",
 		"res://engine/formato/Pacote.gd",
+		"res://engine/formato/Medidas.gd",
+		"res://engine/nucleo/Sprites.gd",
+		"res://engine/nucleo/Glifos.gd",
+		"res://engine/selecao/Selecao.gd",
+		"res://engine/luta/Luta.gd",
 	]:
 		_checar("compila " + caminho.get_file(), load(caminho) != null)
 

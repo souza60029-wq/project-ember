@@ -7,23 +7,24 @@ extends Node2D
 const Caixa = preload("res://engine/nucleo/Caixa.gd")
 const Personagem = preload("res://engine/nucleo/Personagem.gd")
 const Formato = preload("res://engine/formato/Formato.gd")
+const Sprites = preload("res://engine/nucleo/Sprites.gd")
 
 const PERSONAGEM_INICIAL := "res://personagens/ash_crimson/personagem.json"
 const VIEW_W := 960.0
 const VIEW_H := 540.0
 const FRAMES_KO := 150
-const TECLAS := ["LP", "LK", "HP", "HK", "CD", "ROLL"]
+const TECLAS := ["LP", "LK", "HP", "HK", "BO", "ESQ"]
 
 const DPAD_C := Vector2(120.0, 430.0)
 const DPAD_R := 80.0
 const BOTAO_R := 36.0
 const BOTOES := {
 	"HP": Vector2(720.0, 330.0),
-	"CD": Vector2(840.0, 330.0),
+	"BO": Vector2(840.0, 330.0),
 	"LP": Vector2(660.0, 410.0),
 	"HK": Vector2(780.0, 410.0),
 	"LK": Vector2(720.0, 490.0),
-	"ROLL": Vector2(860.0, 470.0),
+	"ESQ": Vector2(860.0, 470.0),
 }
 
 const RECT_RESET := Rect2(260.0, 8.0, 120.0, 34.0)
@@ -40,6 +41,13 @@ const FRACAO_FAIXA_DANO := 0.35
 var p1 = Personagem.new()
 var p2 = Personagem.new()
 var nome_p1: String = "Sem personagem"
+var nome_p2: String = "Sem personagem"
+var dados1: Dictionary = {}
+var dados2: Dictionary = {}
+var pasta1: String = ""
+var pasta2: String = ""
+var id1: String = ""
+var id2: String = ""
 var aviso: String = ""
 var toques := {}
 var mask1 := {}
@@ -51,9 +59,9 @@ var ko_t := 0
 func _init() -> void:
 	p1.oponente = p2
 	p2.oponente = p1
-	_carregar_personagem()
 
 func _ready() -> void:
+	_carregar_lutadores()
 	_reiniciar_luta()
 
 func _process(_delta: float) -> void:
@@ -65,6 +73,8 @@ func _physics_process(_delta: float) -> void:
 	_resolver_combate(p1, p2)
 	_resolver_combate(p2, p1)
 	_separar_corpos()
+	_tocar_eventos(p1, id1)
+	_tocar_eventos(p2, id2)
 	_expirar_combos()
 	if p1.estado == Personagem.Estado.KO or p2.estado == Personagem.Estado.KO:
 		ko_t += 1
@@ -75,19 +85,84 @@ func _physics_process(_delta: float) -> void:
 
 # ---------- Carregamento ----------
 
-func _carregar_personagem() -> void:
+# Lê os personagens escolhidos na seleção (Navegacao.selecao). Sem escolha, usa o primeiro
+# do catálogo e, se não houver nenhum, o personagem inicial do jogo.
+func _carregar_lutadores() -> void:
+	var sel: Dictionary = {"p1": "", "p2": ""}
+	if has_node("/root/Navegacao"):
+		sel = get_node("/root/Navegacao").selecao
+	var a: Dictionary = _obter(str(sel.get("p1", "")))
+	var b: Dictionary = _obter(str(sel.get("p2", "")))
+	if b.is_empty():
+		b = a
+	_aplicar(p1, a, 1)
+	_aplicar(p2, b, 2)
+
+func _obter(id: String) -> Dictionary:
+	if has_node("/root/Catalogo"):
+		var cat: Node = get_node("/root/Catalogo")
+		if id != "":
+			var item: Dictionary = cat.obter(id)
+			if not item.is_empty():
+				return item
+		var lista: Array = cat.lista()
+		if not lista.is_empty():
+			return lista[0]
 	var r: Dictionary = Formato.ler(PERSONAGEM_INICIAL)
 	if r["ok"]:
 		var per: Dictionary = r["personagem"]
-		nome_p1 = str(per["nome"])
-		p1.definir_golpes(per["golpes"])
-		p2.definir_golpes(per["golpes"])
-		aviso = ""
+		return {"id": str(per["id"]), "nome": str(per["nome"]), "pasta": PERSONAGEM_INICIAL.get_base_dir() + "/", "personagem": per}
+	return {}
+
+func _aplicar(p, item: Dictionary, lado: int) -> void:
+	var per: Dictionary = {}
+	var pasta: String = ""
+	var nome: String = "Sem personagem"
+	var id: String = ""
+	if item.is_empty():
+		p.definir_golpes([Formato.padrao_golpe()])
+		aviso = "Personagem não carregado."
 	else:
-		nome_p1 = "Sem personagem"
-		p1.definir_golpes([Formato.padrao_golpe()])
-		p2.definir_golpes([Formato.padrao_golpe()])
-		aviso = "Personagem não carregado: " + str(r["erro"])
+		per = item["personagem"]
+		pasta = str(item["pasta"])
+		nome = str(per["nome"])
+		id = str(item["id"])
+		p.definir_golpes(per["golpes"])
+		p.definir_escala(float(per.get("altura_px", Formato.ALTURA_PADRAO)) / Personagem.CORPO_ALTURA)
+	if lado == 1:
+		dados1 = per
+		pasta1 = pasta
+		nome_p1 = nome
+		id1 = id
+	else:
+		dados2 = per
+		pasta2 = pasta
+		nome_p2 = nome
+		id2 = id
+
+# Sons da luta: usa os arquivos do personagem (sons/<evento>) e o som do golpe, se houver.
+func _tocar_eventos(p, id: String) -> void:
+	var fila: Array = p.eventos
+	p.eventos = []
+	if not has_node("/root/Audio"):
+		return
+	var audio: Node = get_node("/root/Audio")
+	for e in fila:
+		var ev: Dictionary = e
+		var g: Dictionary = ev["golpe"]
+		var som_golpe: String = ""
+		if not g.is_empty():
+			som_golpe = str((g["sons"] as Dictionary).get("uso", ""))
+		match str(ev["tipo"]):
+			"golpe":
+				var forte: bool = int(g["forca"]) >= 2
+				audio.tocar("ataque_forte" if forte else "ataque_leve", id, som_golpe)
+			"acerto":
+				audio.tocar("impacto_forte" if int(g["forca"]) >= 2 else "impacto_leve", id)
+			"bloqueio":
+				audio.tocar("bloqueio", id)
+			"parry", "guarda_quebrada", "esquiva", "pulo":
+				audio.tocar(str(ev["tipo"]), id)
 
 # ---------- Entrada ----------
 
@@ -158,8 +233,8 @@ func _entrada_pad(dev: int) -> Dictionary:
 		"LK": Input.is_joy_button_pressed(dev, JOY_BUTTON_A),
 		"HP": Input.is_joy_button_pressed(dev, JOY_BUTTON_Y),
 		"HK": Input.is_joy_button_pressed(dev, JOY_BUTTON_B),
-		"CD": Input.is_joy_button_pressed(dev, JOY_BUTTON_RIGHT_SHOULDER),
-		"ROLL": Input.is_joy_button_pressed(dev, JOY_BUTTON_LEFT_SHOULDER),
+		"BO": Input.is_joy_button_pressed(dev, JOY_BUTTON_RIGHT_SHOULDER),
+		"ESQ": Input.is_joy_button_pressed(dev, JOY_BUTTON_LEFT_SHOULDER),
 	}
 
 func _entrada_p1() -> Dictionary:
@@ -170,7 +245,7 @@ func _entrada_p1() -> Dictionary:
 		r[k] = bool(pad[k]) or tocado.has(k)
 	return r
 
-# Combos de toque: LP+LK = ROLL, HP+HK = CD.
+# Combos de toque: LP+LK = ESQ (esquiva), HP+HK = BO (blow off).
 func _logico(raw: Dictionary) -> Dictionary:
 	var roll_c: bool = bool(raw["LP"]) and bool(raw["LK"])
 	var cd_c: bool = bool(raw["HP"]) and bool(raw["HK"])
@@ -179,8 +254,8 @@ func _logico(raw: Dictionary) -> Dictionary:
 		"LK": bool(raw["LK"]) and not roll_c,
 		"HP": bool(raw["HP"]) and not cd_c,
 		"HK": bool(raw["HK"]) and not cd_c,
-		"CD": bool(raw["CD"]) or cd_c,
-		"ROLL": bool(raw["ROLL"]) or roll_c,
+		"BO": bool(raw["BO"]) or cd_c,
+		"ESQ": bool(raw["ESQ"]) or roll_c,
 	}
 
 # Botão segurado não repete golpe. Ao iniciar um golpe, ou ao sair de um
@@ -231,11 +306,14 @@ func _resolver_combate(atk, dfn) -> void:
 	if res == "nada":
 		return
 	atk.golpe_acertou = true
+	if res == "parry":
+		dfn.receber_parry(g)
+		return
 	if res == "bloqueio":
 		dfn.receber_bloqueio(g)
 		return
 	var escala: float = maxf(0.5, 1.0 - 0.1 * float(atk.combo))
-	var dano: float = float(g["dano"]) * escala
+	var dano: float = Personagem.dano_do_golpe(g) * escala
 	var vida_antes: float = dfn.vida
 	# Primeiro acerto de um combo zera a barra de dano do defensor.
 	if atk.combo == 0:
@@ -262,6 +340,9 @@ func _expirar_combo(atk, dfn) -> void:
 
 func _separar_corpos() -> void:
 	if p1.no_chao or p2.no_chao:
+		return
+	# Durante a esquiva o corpo atravessa o oponente.
+	if p1.estado == Personagem.Estado.ESQUIVANDO or p2.estado == Personagem.Estado.ESQUIVANDO:
 		return
 	var d: float = p2.pos.x - p1.pos.x
 	var falta: float = Personagem.CORPO_LARGURA - absf(d)
@@ -297,12 +378,50 @@ func _desenhar_luta() -> void:
 	draw_rect(Rect2(0.0, 0.0, VIEW_W, VIEW_H), Color(0.09, 0.09, 0.12))
 	draw_rect(Rect2(0.0, Personagem.CHAO_Y, VIEW_W, VIEW_H - Personagem.CHAO_Y), Color(0.18, 0.16, 0.2))
 	draw_line(Vector2(0.0, Personagem.CHAO_Y), Vector2(VIEW_W, Personagem.CHAO_Y), Color(0.5, 0.5, 0.6), 2.0)
-	_desenhar_personagem(p1, Color(0.3, 0.6, 1.0))
-	_desenhar_personagem(p2, Color(1.0, 0.45, 0.2))
+	_desenhar_personagem(p1, Color(0.3, 0.6, 1.0), dados1, pasta1)
+	_desenhar_personagem(p2, Color(1.0, 0.45, 0.2), dados2, pasta2)
+	if _debug():
+		_desenhar_debug(p1)
+		_desenhar_debug(p2)
 	if aviso != "":
 		_texto(aviso, Vector2(20.0, 520.0), 12, Color(1.0, 0.8, 0.5))
 
-func _desenhar_personagem(p, base: Color) -> void:
+func _debug() -> bool:
+	return has_node("/root/Config") and bool(get_node("/root/Config").debug_hitboxes)
+
+# Sprite do momento: do golpe (cronograma de frames) ou da animação do estado.
+func _textura_atual(p, dados: Dictionary, pasta: String) -> Texture2D:
+	if dados.is_empty():
+		return null
+	var lista: Array = []
+	var i: int = -1
+	if p.estado == Personagem.Estado.ATACANDO and not p.golpe_atual.is_empty():
+		lista = p.golpe_atual["frames"]
+		i = Formato.indice_no_tempo(p.golpe_atual, p.tempo)
+	else:
+		var slot: String = p.slot_animacao()
+		var sprites: Dictionary = dados["sprites"]
+		lista = sprites.get(slot, [])
+		if lista.is_empty():
+			lista = sprites.get("parado", [])
+			i = Formato.indice_ciclo(lista.size(), p.relogio)
+		elif Formato.SLOTS_EM_CICLO.has(slot):
+			i = Formato.indice_ciclo(lista.size(), p.relogio)
+		else:
+			i = Formato.indice_proporcional(lista.size(), p.tempo, p.duracao)
+	if lista.is_empty() and p.estado == Personagem.Estado.ATACANDO:
+		var sprites2: Dictionary = dados["sprites"]
+		lista = sprites2.get("parado", [])
+		i = Formato.indice_ciclo(lista.size(), p.relogio)
+	return Sprites.textura(Sprites.caminho_quadro(pasta, lista, i))
+
+func _desenhar_personagem(p, base: Color, dados: Dictionary, pasta: String) -> void:
+	var tex: Texture2D = _textura_atual(p, dados, pasta)
+	var alfa: float = 0.55 if (p.estado == Personagem.Estado.ESQUIVANDO or p.estado == Personagem.Estado.LEVANTANDO) else 1.0
+	if tex != null:
+		Sprites.desenhar(self, tex, p.pos, p.direita, Color(1.0, 1.0, 1.0, alfa))
+		return
+	# Sem sprite: caixa de cor no lugar do personagem.
 	var est: int = p.estado
 	var cor: Color = base
 	if est == Personagem.Estado.GOLPEADO:
@@ -313,16 +432,32 @@ func _desenhar_personagem(p, base: Color) -> void:
 		cor = base.lightened(0.3)
 	elif est == Personagem.Estado.KO:
 		cor = Color(0.3, 0.3, 0.3)
-	elif est == Personagem.Estado.ESQUIVANDO or est == Personagem.Estado.LEVANTANDO:
-		cor = Color(base.r, base.g, base.b, 0.55)
+	elif est == Personagem.Estado.PARRY:
+		cor = Color(0.4, 1.0, 0.6)
+	elif est == Personagem.Estado.GUARDA_QUEBRADA:
+		cor = Color(0.9, 0.4, 0.9)
+	elif alfa < 1.0:
+		cor = Color(base.r, base.g, base.b, alfa)
 	var c: Rect2 = p.corpo_rect()
 	draw_rect(c, cor)
 	draw_rect(c, Color(1.0, 1.0, 1.0, 0.8), false, 2.0)
 	var frente: float = 1.0 if p.direita else -1.0
-	draw_circle(Vector2(p.pos.x + frente * 14.0, p.pos.y - 96.0), 5.0, Color.WHITE)
+	draw_circle(Vector2(p.pos.x + frente * 14.0 * p.escala, p.pos.y - 96.0 * p.escala), 5.0, Color.WHITE)
+
+# Modo debug: corpo (azul), hitbox do golpe (vermelho), janela de parry (verde) e dados.
+func _desenhar_debug(p) -> void:
+	var c: Rect2 = p.corpo_rect()
+	draw_rect(c, Color(0.2, 0.5, 1.0, 0.25))
+	draw_rect(c, Color(0.3, 0.6, 1.0, 0.9), false, 2.0)
 	var hb: Rect2 = p.hitbox_rect()
 	if hb.size.x > 0.0:
-		draw_rect(hb, Color(1.0, 0.2, 0.2, 0.5))
+		draw_rect(hb, Color(1.0, 0.2, 0.2, 0.45))
+		draw_rect(hb, Color(1.0, 0.3, 0.3, 1.0), false, 2.0)
+	if p.parry_janela > 0:
+		draw_rect(c.grow(6.0), Color(0.3, 1.0, 0.5, 0.9), false, 3.0)
+	draw_circle(p.pos, 3.0, Color.YELLOW)
+	var info: String = "%s  g:%d  pj:%d" % [p.nome_estado(), int(p.guarda), p.parry_janela]
+	_texto(info, Vector2(p.pos.x - 50.0, c.position.y - 8.0), 11, Color(1.0, 1.0, 0.6))
 
 func _desenhar_hud() -> void:
 	var r1 := Rect2(20.0, 60.0, 410.0, 16.0)
@@ -331,8 +466,12 @@ func _desenhar_hud() -> void:
 	_barra_vida(r2, p2, true, COR_P2, COR_P2_FUNDO)
 	_barra_energia(Rect2(20.0, 82.0, 300.0, 8.0), p1, false)
 	_barra_energia(Rect2(640.0, 82.0, 300.0, 8.0), p2, true)
+	_barra_guarda(Rect2(20.0, 94.0, 300.0, 6.0), p1, false)
+	_barra_guarda(Rect2(640.0, 94.0, 300.0, 6.0), p2, true)
+	_avisos(p1, 20.0, false)
+	_avisos(p2, 530.0, true)
 	_texto(nome_p1, Vector2(20.0, 54.0), 14)
-	_texto_dir("Treino (P2)", Vector2(530.0, 54.0), 410.0, 14)
+	_texto_dir(nome_p2, Vector2(530.0, 54.0), 410.0, 14)
 	_texto(p1.nome_estado(), Vector2(20.0, 110.0), 12, Color(0.8, 0.8, 0.8))
 	_texto_dir(p2.nome_estado(), Vector2(530.0, 110.0), 410.0, 12, Color(0.8, 0.8, 0.8))
 	if p1.combo > 1:
@@ -381,6 +520,32 @@ func _barra_energia(r: Rect2, p, da_direita: bool) -> void:
 	var x: float = r.position.x + (r.size.x - w if da_direita else 0.0)
 	draw_rect(Rect2(x, r.position.y, w, r.size.y), Color(1.0, 0.7, 0.2))
 	draw_rect(r, Color(1.0, 1.0, 1.0, 0.6), false, 1.0)
+
+# Barra de defesa: azul-claro; vermelha enquanto a guarda está quebrada.
+func _barra_guarda(r: Rect2, p, da_direita: bool) -> void:
+	draw_rect(r, Color(0.12, 0.15, 0.2))
+	var prop: float = clampf(float(p.guarda) / Personagem.GUARDA_MAX, 0.0, 1.0)
+	var w: float = r.size.x * prop
+	var x: float = r.position.x + (r.size.x - w if da_direita else 0.0)
+	var quebrada: bool = p.estado == Personagem.Estado.GUARDA_QUEBRADA
+	draw_rect(Rect2(x, r.position.y, w, r.size.y), Color(1.0, 0.3, 0.3) if quebrada else Color(0.4, 0.8, 1.0))
+	draw_rect(r, Color(1.0, 1.0, 1.0, 0.5), false, 1.0)
+
+func _avisos(p, x: float, da_direita: bool) -> void:
+	var texto: String = ""
+	var cor: Color = Color.WHITE
+	if p.parry_aviso > 0:
+		texto = "JUST DEFENSE!"
+		cor = Color(0.4, 1.0, 0.6)
+	elif p.estado == Personagem.Estado.GUARDA_QUEBRADA:
+		texto = "GUARD BREAK"
+		cor = Color(1.0, 0.4, 0.4)
+	if texto == "":
+		return
+	if da_direita:
+		_texto_dir(texto, Vector2(x, 150.0), 410.0, 16, cor)
+	else:
+		_texto(texto, Vector2(x, 150.0), 16, cor)
 
 func _desenhar_controles() -> void:
 	var tocado := _botoes_tocados()

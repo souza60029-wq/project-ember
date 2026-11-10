@@ -57,6 +57,14 @@ func tocar_interface(nome: String) -> void:
 	_tocar_efeito(_achar_base(PASTA_INTERFACE + nome))
 
 
+# Toca sons/interface/<nome>; se não existir, toca o da reserva (ex.: "start" -> "menu_confirma").
+func tocar_interface_ou(nome: String, reserva: String) -> void:
+	var caminho: String = _achar_base(PASTA_INTERFACE + nome)
+	if caminho == "":
+		caminho = _achar_base(PASTA_INTERFACE + reserva)
+	_tocar_efeito(caminho)
+
+
 func tocar_musica(nome: String, repetir: bool = true) -> void:
 	if nome == _nome_musica and _musicas[_ativa].playing:
 		return

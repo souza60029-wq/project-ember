@@ -10,11 +10,11 @@ const TODOS := [
 	"voz_queda", "voz_morte",
 	"bloqueio", "impacto_leve", "impacto_forte",
 	"pulo", "pouso", "passo", "esquiva", "levantar",
-	"vitoria", "derrota",
+	"vitoria", "derrota", "parry", "guarda_quebrada",
 ]
 
 # Sons da interface (menu). Ficam em sons/interface/.
-const INTERFACE := ["menu_mover", "menu_confirma", "menu_voltar"]
+const INTERFACE := ["menu_mover", "menu_confirma", "menu_voltar", "start", "selecao_mover", "selecao_confirma"]
 
 
 static func valido(nome: String) -> bool:

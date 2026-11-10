@@ -4,6 +4,7 @@ extends CanvasLayer
 
 const CENA_MENU := "res://engine/menu/Menu.tscn"
 const CENA_LUTA := "res://engine/luta/Luta.tscn"
+const CENA_SELECAO := "res://engine/selecao/Selecao.tscn"
 const FADE_INICIAL := 1.2
 const FADE_SAIDA := 0.35
 const FADE_ENTRADA := 0.35
@@ -33,6 +34,10 @@ class BotaoVoltar extends Control:
 			accept_event()
 			pressionado.emit()
 
+
+# Modo escolhido no menu e personagens escolhidos na seleção (ids do Catalogo).
+var modo_luta: String = "treino"
+var selecao: Dictionary = {"p1": "", "p2": ""}
 
 var _cobertura: ColorRect
 var _botao: BotaoVoltar
@@ -64,6 +69,12 @@ func _ready() -> void:
 
 func ir_para_luta() -> void:
 	_ir(CENA_LUTA, true)
+
+
+# Todo modo que leva a uma luta passa antes pela seleção de personagens.
+func ir_para_selecao(modo: String) -> void:
+	modo_luta = modo
+	_ir(CENA_SELECAO, false)
 
 
 func ir_para_menu() -> void:

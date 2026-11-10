@@ -2,7 +2,7 @@ config_version=5
 
 [application]
 
-config/name="Battle Engine Mobile"
+config/name="Ember"
 config/icon="res://Icon.PNG"
 run/main_scene="res://engine/inicio/Abertura.tscn"
 config/features=PackedStringArray("4.2")

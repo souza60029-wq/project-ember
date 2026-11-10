@@ -48,7 +48,7 @@ func _draw() -> void:
 		var w := tam * escala
 		draw_texture_rect(_logo, Rect2((VIEW_W - w.x) * 0.5, (VIEW_H - w.y) * 0.5, w.x, w.y), false, Color(1.0, 1.0, 1.0, a))
 	else:
-		draw_string(ThemeDB.fallback_font, Vector2(0.0, VIEW_H * 0.5), "BATTLE ENGINE MOBILE", HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 36, Color(1.0, 1.0, 1.0, a))
+		draw_string(ThemeDB.fallback_font, Vector2(0.0, VIEW_H * 0.5), "EMBER", HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 36, Color(1.0, 1.0, 1.0, a))
 
 
 func _unhandled_input(ev: InputEvent) -> void:

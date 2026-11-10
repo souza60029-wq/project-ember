@@ -7,6 +7,7 @@ extends Control
 # Navegação: toque; controle (D-pad ou analógico esquerdo move, A confirma, B volta).
 # Autoloads são acessados por get_node, para o script compilar sem eles.
 
+const Glifos = preload("res://engine/nucleo/Glifos.gd")
 const CENA_EDITOR := "res://engine/editor/EditorPersonagem.tscn"
 const PASTA_MENU := "res://ui/menu/"
 const VIEW_W := 960.0
@@ -53,16 +54,16 @@ const ABAS := [
 		"chave": "aba_local", "icone": "icone_local", "abrev": "LO",
 		"fundo": "fundo_local", "musica": "menu_local",
 		"filhos": [
-			{"chave": "sub_arcade", "icone": "icone_arcade", "acao": "em_breve"},
-			{"chave": "sub_classico", "icone": "icone_classico", "acao": "em_breve"},
-			{"chave": "sub_historia", "icone": "icone_historia", "acao": "em_breve"}
+			{"chave": "sub_arcade", "icone": "icone_arcade", "acao": "arcade"},
+			{"chave": "sub_classico", "icone": "icone_classico", "acao": "classico"},
+			{"chave": "sub_historia", "icone": "icone_historia", "acao": "historia"}
 		]
 	},
 	{
 		"chave": "aba_multiplayer", "icone": "icone_multiplayer", "abrev": "MP",
 		"fundo": "fundo_multiplayer", "musica": "menu_multiplayer",
 		"filhos": [
-			{"chave": "mp_coop", "icone": "icone_coop", "acao": "em_breve"},
+			{"chave": "mp_coop", "icone": "icone_coop", "acao": "coop"},
 			{"chave": "mp_online", "icone": "icone_mp_online", "acao": "em_breve"}
 		]
 	},
@@ -144,6 +145,8 @@ func _draw() -> void:
 		draw_rect(Rect2(0.0, 0.0, VIEW_W, VIEW_H), Color(0.0, 0.0, 0.0, 0.6))
 	for e in _layout():
 		_desenhar_entrada(e)
+	if not config_aberto:
+		_desenhar_dicas()
 	if aviso_t > 0:
 		draw_string(ThemeDB.fallback_font, Vector2(0.0, 250.0), aviso, HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 14, Color(1.0, 0.85, 0.5))
 
@@ -163,10 +166,51 @@ func _sombra(r: Rect2) -> void:
 	])
 	draw_polygon(pontos, cores)
 
+func _modo_controle() -> bool:
+	return str(_config().modo_efetivo()) == "controle"
+
+# Botão de configurações: pequeno, no canto. No modo controle mostra o ícone do START ao lado.
+func _desenhar_botao_config(r: Rect2) -> void:
+	draw_rect(r, Color(0.05, 0.05, 0.10, 0.55))
+	draw_rect(r, Color(1.0, 1.0, 1.0, 0.25), false, 1.0)
+	var tex: Texture2D = _textura("icone_config")
+	if tex != null:
+		draw_texture_rect(tex, r.grow(-4.0), false)
+	else:
+		var c: Vector2 = r.get_center()
+		draw_arc(c, 9.0, 0.0, TAU, 20, Color(1, 1, 1, 0.9), 2.5)
+		for i in range(8):
+			var a: float = float(i) * TAU / 8.0
+			draw_line(c + Vector2(cos(a), sin(a)) * 9.0, c + Vector2(cos(a), sin(a)) * 13.0, Color(1, 1, 1, 0.9), 3.0)
+	if _modo_controle():
+		Glifos.desenhar(self, "START", Vector2(r.end.x + 36.0, r.get_center().y), 11.0, bool(_config().controle_ps()))
+
+# Dicas de botão do controle (só no modo controle). No toque, uma dica de texto.
+func _desenhar_dicas() -> void:
+	if not _modo_controle():
+		_texto_c(Rect2(0.0, DICA_Y - 14.0, VIEW_W, 18.0), _t("dica_toque"), 13, Color(0.9, 0.9, 0.95, 0.8))
+		return
+	var ps: bool = bool(_config().controle_ps())
+	var x: float = 250.0
+	var y: float = DICA_Y - 8.0
+	var itens: Array = [["LB", "dica_trocar"], ["DPAD", "dica_mover"], ["A", "dica_confirmar"], ["B", "dica_voltar"]]
+	for it in itens:
+		var par: Array = it
+		Glifos.desenhar(self, str(par[0]), Vector2(x, y), 9.0, ps)
+		if str(par[0]) == "LB":
+			Glifos.desenhar(self, "RB", Vector2(x + 34.0, y), 9.0, ps)
+			x += 34.0
+		var rotulo: String = _t(str(par[1]))
+		draw_string(ThemeDB.fallback_font, Vector2(x + 18.0, y + 5.0), rotulo, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(0.9, 0.9, 0.95))
+		x += 40.0 + rotulo.length() * 7.5
+
 func _desenhar_entrada(e: Dictionary) -> void:
 	var r: Rect2 = e["r"]
 	var tipo: String = e["tipo"]
 	var texto: String = str(e["label"])
+	if tipo == "config_abrir":
+		_desenhar_botao_config(r)
+		return
 	if tipo == "nada":
 		_texto_c(r, texto, 14, Color(0.9, 0.9, 0.95))
 		return
@@ -227,7 +271,7 @@ func _rect_aba(i: int) -> Rect2:
 	return Rect2(MARGEM + i * (TAB_W + TAB_GAP), TAB_Y, TAB_W, TAB_H)
 
 func _layout_principal(lista: Array) -> void:
-	lista.append(_entrada(Rect2(MARGEM, 14.0, 170.0, 36.0), "config_abrir", 0, _t("cfg_titulo"), false))
+	lista.append(_entrada(Rect2(MARGEM, 14.0, 44.0, 40.0), "config_abrir", 0, _t("cfg_titulo"), false))
 	for i in range(ABAS.size()):
 		var item: Dictionary = ABAS[i]
 		var e: Dictionary = _entrada(_rect_aba(i), "aba", i, _t(str(item["chave"])), i == aba, item)
@@ -249,7 +293,6 @@ func _layout_principal(lista: Array) -> void:
 			e2["foco"] = foco == 0 and j == sub
 			lista.append(e2)
 
-	lista.append(_entrada(Rect2(0.0, DICA_Y - 14.0, VIEW_W, 18.0), "nada", 0, _t("dica_menu"), false))
 
 func _layout_config(lista: Array) -> void:
 	lista.append(_entrada(Rect2(40.0, 40.0, 300.0, 44.0), "nada", 0, _t("cfg_titulo"), false))
@@ -288,7 +331,9 @@ func _info_controle(lista: Array) -> void:
 
 func _opcoes_cfg(cat: int) -> Array:
 	var r: Array = []
-	if cat == 2:
+	if cat == 1:
+		r.append({"chave": "cfg_debug", "ativo": bool(_config().debug_hitboxes)})
+	elif cat == 2:
 		for m in MODOS:
 			r.append({"chave": "modo_" + str(m), "ativo": _config().modo_escolhido == str(m)})
 	elif cat == 3:
@@ -388,8 +433,22 @@ func _acionar(e: Dictionary) -> void:
 			_executar(item)
 
 func _botao(b: int) -> void:
+	if b == JOY_BUTTON_START:
+		if config_aberto:
+			_voltar_config_tudo()
+		else:
+			_abrir_config()
+		return
 	if config_aberto:
 		_botao_config(b)
+		return
+	if b == JOY_BUTTON_LEFT_SHOULDER:
+		foco = 0
+		_selecionar_aba(posmod(aba - 1, ABAS.size()))
+		return
+	if b == JOY_BUTTON_RIGHT_SHOULDER:
+		foco = 0
+		_selecionar_aba(posmod(aba + 1, ABAS.size()))
 		return
 	if b == JOY_BUTTON_DPAD_LEFT:
 		_mover(-1)
@@ -461,6 +520,11 @@ func _abrir_config() -> void:
 	_som("menu_confirma")
 	_tocar_musica("menu_configuracoes")
 
+func _voltar_config_tudo() -> void:
+	config_nivel = 0
+	_voltar_config()
+
+
 func _voltar_config() -> void:
 	if config_nivel == 1:
 		config_nivel = 0
@@ -485,7 +549,9 @@ func _acionar_foco_cfg() -> void:
 	_acionar(f[posmod(cfg_foco, f.size())])
 
 func _aplicar_cfg(j: int) -> void:
-	if config_cat == 2 and j < MODOS.size():
+	if config_cat == 1 and j == 0:
+		_config().definir_debug(not bool(_config().debug_hitboxes))
+	elif config_cat == 2 and j < MODOS.size():
 		_config().definir_modo(MODOS[j])
 	elif config_cat == 3 and j < IDIOMAS.size():
 		_config().definir_idioma(IDIOMAS[j])
@@ -496,9 +562,10 @@ func _aplicar_cfg(j: int) -> void:
 func _executar(item: Dictionary) -> void:
 	var acao: String = str(item.get("acao", ""))
 	match acao:
-		"treino":
+		"treino", "arcade", "classico", "historia", "coop":
+			# Todo modo que leva a uma luta passa antes pela seleção de personagens.
 			_som("menu_confirma")
-			_navegacao().ir_para_luta()
+			_navegacao().ir_para_selecao(acao)
 		"criar", "editar":
 			if ResourceLoader.exists(CENA_EDITOR):
 				_som("menu_confirma")

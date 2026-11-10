@@ -85,5 +85,5 @@ func _entrar() -> void:
 	if _saindo:
 		return
 	_saindo = true
-	_audio().tocar_interface("menu_confirma")
+	_audio().tocar_interface_ou("start", "menu_confirma")
 	_navegacao().ir_para_menu()

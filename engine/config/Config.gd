@@ -8,6 +8,7 @@ extends Node
 
 signal modo_entrada_mudou(modo: String)
 signal idioma_mudou
+signal debug_mudou(ligado: bool)
 
 const ARQUIVO := "user://config.json"
 const MODOS := ["automatico", "touch", "controle"]
@@ -18,6 +19,8 @@ const LIMIAR_ANALOGICO := 0.5
 var modo_escolhido := "automatico"
 var idioma := "pt"
 var em_luta := false
+# Modo debug: mostra hitboxes, hurtboxes e dados de combate. Padrão: desligado.
+var debug_hitboxes := false
 var controle_conectado := false
 var controle_nome := ""
 var ultimo_botao := ""
@@ -79,6 +82,20 @@ func definir_idioma(novo: String) -> void:
 	idioma_mudou.emit()
 
 
+func definir_debug(ligado: bool) -> void:
+	if ligado == debug_hitboxes:
+		return
+	debug_hitboxes = ligado
+	_salvar()
+	debug_mudou.emit(ligado)
+
+
+# Controle de PlayStation? Muda os ícones (✕ ○ □ △) nas dicas de tela.
+func controle_ps() -> bool:
+	var n: String = controle_nome.to_lower()
+	return n.contains("ps") or n.contains("playstation") or n.contains("dualshock") or n.contains("dualsense") or n.contains("sony")
+
+
 # ---------- Detecção de controle ----------
 
 func _on_joy_mudou(dispositivo: int, conectado: bool) -> void:
@@ -136,9 +153,10 @@ func _carregar() -> void:
 		modo_escolhido = m
 	if IDIOMAS.has(i):
 		idioma = i
+	debug_hitboxes = bool(dados.get("debug", false))
 
 
 func _salvar() -> void:
 	var f := FileAccess.open(ARQUIVO, FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"modo": modo_escolhido, "idioma": idioma}))
+		f.store_string(JSON.stringify({"modo": modo_escolhido, "idioma": idioma, "debug": debug_hitboxes}))

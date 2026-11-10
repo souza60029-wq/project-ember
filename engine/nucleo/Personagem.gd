@@ -9,9 +9,9 @@ extends RefCounted
 const Barra = preload("res://engine/nucleo/Barra.gd")
 const Formato = preload("res://engine/formato/Formato.gd")
 
-enum Estado { PARADO, ANDANDO, PULANDO, DEFENDENDO, ATACANDO, GOLPEADO, CAIDO, LEVANTANDO, ESQUIVANDO, KO, DECOLANDO }
+enum Estado { PARADO, ANDANDO, PULANDO, DEFENDENDO, ATACANDO, GOLPEADO, CAIDO, LEVANTANDO, ESQUIVANDO, KO, DECOLANDO, PARRY, GUARDA_QUEBRADA }
 
-const NOMES_ESTADO := ["PARADO", "ANDANDO", "PULANDO", "DEFENDENDO", "ATACANDO", "GOLPEADO", "CAIDO", "LEVANTANDO", "ESQUIVANDO", "KO", "DECOLANDO"]
+const NOMES_ESTADO := ["PARADO", "ANDANDO", "PULANDO", "DEFENDENDO", "ATACANDO", "GOLPEADO", "CAIDO", "LEVANTANDO", "ESQUIVANDO", "KO", "DECOLANDO", "PARRY", "GUARDA_QUEBRADA"]
 const DT: float = 1.0 / 60.0
 const GRAVIDADE: float = 1800.0
 
@@ -37,9 +37,30 @@ const BLOQUEIO: int = 10
 const CAIDO_FRAMES: int = 36
 const CAIDO_BLOWOFF: int = 90
 const LEVANTAR_FRAMES: int = 18
-const ESQUIVA_FRAMES: int = 24
-const ESQUIVA_VEL: float = 260.0
-const CUSTO_ESQUIVA: float = 25.0
+# Esquiva: distância fixa para todos (22 frames x 330 px/s = 121 px), sem custo.
+# Para frente atravessa o oponente; com o direcional para trás, rola para trás.
+const ESQUIVA_FRAMES: int = 22
+const ESQUIVA_VEL: float = 330.0
+const ESQUIVA_RECARGA: int = 20
+const CUSTO_LEVANTAR: float = 25.0
+
+# Just defense (parry): apertar para trás logo antes do golpe encostar.
+# Segurar para trás desde antes é defesa normal. Janela de 5 frames (~83 ms).
+const JANELA_PARRY: int = 5
+const PARRY_RECARGA: int = 24
+const PARRY_FRAMES: int = 14
+const PARRY_AVISO: int = 40
+
+# Barra de defesa: cada golpe defendido gasta uma parte. Chegou a zero, a guarda quebra.
+const GUARDA_MAX: float = 100.0
+const GUARDA_CUSTO := {1: 14.0, 2: 20.0, 3: 28.0}
+const GUARDA_QUEBRADA_FRAMES: int = 75
+const GUARDA_REGEN_ESPERA: int = 60
+const GUARDA_REGEN_POR_FRAME: float = 0.4
+
+# Golpes fortes (força 2 ou 3) causam 30% menos dano.
+const FORCA_FORTE: int = 2
+const REDUCAO_DANO_FORTE: float = 0.30
 const CUSTO_GUARD_CANCEL: float = 50.0
 const CORPO_LARGURA: float = 50.0
 const CORPO_ALTURA: float = 120.0
@@ -75,6 +96,27 @@ var carga_baixo_t: float = 0.0
 var frames_desde_baixo: int = 999
 var pulo_sombra: bool = false
 var pulo_direcao_x: float = 0.0
+var guarda: float = GUARDA_MAX
+var frames_sem_guarda: int = 0
+var parry_janela: int = 0
+var parry_trava: int = 0
+var parry_aviso: int = 0
+var guarda_aviso: int = 0
+var esquiva_dir: float = 1.0
+var esquiva_trava: int = 0
+var reacao: String = "alto"
+var relogio: int = 0
+var _tras_antes: bool = false
+# Fila de eventos para a Luta tocar sons: {"tipo": String, "golpe": Dictionary}
+var eventos: Array = []
+
+
+# Dano de um golpe depois da redução dos golpes fortes.
+static func dano_do_golpe(g: Dictionary) -> float:
+	var d: float = float(g["dano"])
+	if int(g["forca"]) >= FORCA_FORTE:
+		d *= 1.0 - REDUCAO_DANO_FORTE
+	return d
 
 # ---------- Ciclo de vida ----------
 
@@ -121,10 +163,32 @@ func resetar(x: float, olhando_direita: bool) -> void:
 	frames_desde_baixo = 999
 	pulo_sombra = false
 	pulo_direcao_x = 0.0
+	guarda = GUARDA_MAX
+	frames_sem_guarda = 0
+	parry_janela = 0
+	parry_trava = 0
+	parry_aviso = 0
+	guarda_aviso = 0
+	esquiva_dir = 1.0
+	esquiva_trava = 0
+	reacao = "alto"
+	relogio = 0
+	_tras_antes = false
 
 # ---------- Entrada e estados ----------
 
 func atualizar(dir: Vector2, apertados: Dictionary) -> void:
+	relogio += 1
+	if parry_aviso > 0:
+		parry_aviso -= 1
+	if guarda_aviso > 0:
+		guarda_aviso -= 1
+	if esquiva_trava > 0:
+		esquiva_trava -= 1
+	if estado != Estado.GUARDA_QUEBRADA and estado != Estado.KO:
+		frames_sem_guarda = mini(frames_sem_guarda + 1, 9999)
+		if frames_sem_guarda > GUARDA_REGEN_ESPERA and guarda < GUARDA_MAX:
+			guarda = minf(GUARDA_MAX, guarda + GUARDA_REGEN_POR_FRAME)
 	if estado == Estado.KO:
 		_aplicar_fisica()
 		return
@@ -138,6 +202,7 @@ func atualizar(dir: Vector2, apertados: Dictionary) -> void:
 	carga_tras_t = carga_tras_t + DT if atras else 0.0
 	carga_baixo_t = carga_baixo_t + DT if baixo else 0.0
 	frames_desde_baixo = 0 if baixo else mini(frames_desde_baixo + 1, 999)
+	_atualizar_parry(atras and not _tras_antes, atras)
 	bloqueando = atras and estado in [Estado.PARADO, Estado.ANDANDO, Estado.PULANDO, Estado.DEFENDENDO, Estado.GOLPEADO]
 	match estado:
 		Estado.PARADO, Estado.ANDANDO, Estado.PULANDO, Estado.DEFENDENDO:
@@ -147,21 +212,20 @@ func atualizar(dir: Vector2, apertados: Dictionary) -> void:
 		Estado.ATACANDO:
 			_processar_ataque()
 		Estado.GOLPEADO:
-			if bloqueado and apertados.get("CD", false) and barra.valor >= CUSTO_GUARD_CANCEL and oponente != null:
+			if bloqueado and apertados.get("BO", false) and barra.valor >= CUSTO_GUARD_CANCEL and oponente != null:
 				_guard_cancel()
 			else:
 				_processar_golpeado()
 		Estado.CAIDO:
 			_processar_caido(apertados)
-		Estado.LEVANTANDO, Estado.ESQUIVANDO:
+		Estado.LEVANTANDO, Estado.ESQUIVANDO, Estado.PARRY, Estado.GUARDA_QUEBRADA:
 			_processar_temporizado()
 	_aplicar_fisica()
 
 
 func _estado_livre(dir: Vector2, apertados: Dictionary, atras: bool, cima: bool) -> void:
-	if apertados.get("ROLL", false) and not no_chao and barra.valor >= CUSTO_ESQUIVA:
-		barra.gastar(CUSTO_ESQUIVA)
-		_iniciar_esquiva()
+	if apertados.get("ESQ", false) and not no_chao and esquiva_trava == 0:
+		_iniciar_esquiva(dir)
 		return
 	var g: Dictionary = _escolher_golpe(apertados)
 	if not g.is_empty():
@@ -210,6 +274,7 @@ func _executar(g: Dictionary) -> void:
 	if custo > 0.0:
 		barra.gastar(custo)
 	golpe_atual = g.duplicate(true)
+	eventos.append({"tipo": "golpe", "golpe": golpe_atual})
 	golpe_acertou = false
 	estado = Estado.ATACANDO
 	tempo = 0
@@ -252,24 +317,32 @@ func _processar_decolagem(dir: Vector2) -> void:
 		vel.y = VEL_NORMAL_ALTO if alto else VEL_NORMAL_BAIXO
 	vel.x = pulo_direcao_x * VEL_ANDAR
 	no_chao = true
+	eventos.append({"tipo": "pulo", "golpe": {}})
 	estado = Estado.PULANDO
 	tempo = 0
 	duracao = 0
 
 
-func _iniciar_esquiva() -> void:
+func _iniciar_esquiva(dir: Vector2) -> void:
+	var frente: float = 1.0 if direita else -1.0
+	esquiva_dir = -frente if dir.x * frente < -0.5 else frente
+	esquiva_trava = ESQUIVA_FRAMES + ESQUIVA_RECARGA
+	eventos.append({"tipo": "esquiva", "golpe": {}})
 	estado = Estado.ESQUIVANDO
 	tempo = 0
 	duracao = ESQUIVA_FRAMES
 	golpe_atual = {}
 	bloqueado = false
-	vel.x = -(1.0 if direita else -1.0) * ESQUIVA_VEL
+	vel.x = esquiva_dir * ESQUIVA_VEL
 
 
 func _processar_temporizado() -> void:
 	tempo += 1
 	if estado == Estado.ESQUIVANDO:
-		vel.x = -(1.0 if direita else -1.0) * ESQUIVA_VEL
+		vel.x = esquiva_dir * ESQUIVA_VEL
+	elif estado == Estado.GUARDA_QUEBRADA:
+		vel.x *= 0.85
+		guarda = GUARDA_MAX * float(tempo) / float(maxi(1, duracao))
 	else:
 		vel.x = 0.0
 	if tempo >= duracao:
@@ -279,8 +352,8 @@ func _processar_temporizado() -> void:
 func _processar_caido(apertados: Dictionary) -> void:
 	tempo += 1
 	vel.x *= 0.85
-	if caido_recuperavel and apertados.get("ROLL", false) and barra.valor >= CUSTO_ESQUIVA:
-		barra.gastar(CUSTO_ESQUIVA)
+	if caido_recuperavel and apertados.get("ESQ", false) and barra.valor >= CUSTO_LEVANTAR:
+		barra.gastar(CUSTO_LEVANTAR)
 		estado = Estado.LEVANTANDO
 		tempo = 0
 		duracao = ESQUIVA_FRAMES
@@ -306,6 +379,19 @@ func _voltar_neutro() -> void:
 	duracao = 0
 	bloqueado = false
 	golpe_atual = {}
+
+
+# Janela de just defense: abre quando o "trás" é apertado de novo (soltou e apertou).
+func _atualizar_parry(tras_novo: bool, atras: bool) -> void:
+	_tras_antes = atras
+	if parry_trava > 0:
+		parry_trava -= 1
+	if parry_janela > 0:
+		parry_janela -= 1
+		if parry_janela == 0:
+			parry_trava = PARRY_RECARGA
+	elif tras_novo and parry_trava == 0 and estado in [Estado.PARADO, Estado.ANDANDO, Estado.PULANDO, Estado.DEFENDENDO]:
+		parry_janela = JANELA_PARRY
 
 
 func _guard_cancel() -> void:
@@ -342,19 +428,53 @@ func hitbox_rect() -> Rect2:
 
 
 func resultado_para(g: Dictionary) -> String:
-	if estado == Estado.ESQUIVANDO or estado == Estado.LEVANTANDO or estado == Estado.KO:
+	if estado == Estado.ESQUIVANDO or estado == Estado.LEVANTANDO or estado == Estado.KO or estado == Estado.PARRY:
 		return "nada"
 	var antichao: bool = g["antichao"]
 	if estado == Estado.CAIDO:
 		return "acerto" if antichao else "nada"
 	if antichao:
 		return "nada"
+	if bloqueando and parry_janela > 0:
+		return "parry"
 	if bloqueando:
 		return "bloqueio"
 	return "acerto"
 
 
-func receber_bloqueio(_g: Dictionary) -> void:
+# Just defense: sem dano, sem gastar a barra de defesa.
+func receber_parry(_g: Dictionary) -> void:
+	estado = Estado.PARRY
+	tempo = 0
+	duracao = PARRY_FRAMES
+	bloqueado = false
+	golpe_atual = {}
+	vel.x = 0.0
+	parry_janela = 0
+	parry_trava = 0
+	parry_aviso = PARRY_AVISO
+	eventos.append({"tipo": "parry", "golpe": {}})
+
+
+func _quebrar_guarda() -> void:
+	estado = Estado.GUARDA_QUEBRADA
+	tempo = 0
+	duracao = GUARDA_QUEBRADA_FRAMES
+	guarda = 0.0
+	bloqueado = false
+	golpe_atual = {}
+	vel.x = _empurrao_base() * 60.0
+	guarda_aviso = PARRY_AVISO
+	eventos.append({"tipo": "guarda_quebrada", "golpe": {}})
+
+
+func receber_bloqueio(g: Dictionary) -> void:
+	frames_sem_guarda = 0
+	guarda -= float(GUARDA_CUSTO.get(int(g["forca"]), 14.0))
+	if guarda <= 0.0:
+		_quebrar_guarda()
+		return
+	eventos.append({"tipo": "bloqueio", "golpe": g})
 	estado = Estado.GOLPEADO
 	tempo = 0
 	duracao = BLOQUEIO
@@ -375,6 +495,8 @@ func receber_acerto(g: Dictionary, dano: float) -> void:
 		return
 	var blowoff: bool = g["blowoff"]
 	var knock: bool = era_caido or bool(g["antichao"]) or blowoff or int(g["forca"]) >= 3
+	reacao = _classificar_reacao(g, knock)
+	eventos.append({"tipo": "acerto", "golpe": g})
 	if knock:
 		estado = Estado.CAIDO
 		duracao = CAIDO_BLOWOFF if blowoff else CAIDO_FRAMES
@@ -386,7 +508,49 @@ func receber_acerto(g: Dictionary, dano: float) -> void:
 		vel.x = _empurrao_base() * 60.0
 
 
+# Onde o golpe pegou, pela altura do centro da hitbox: baixo, medio ou alto.
+# Golpe baixo que derruba vira "rasteira".
+func _classificar_reacao(g: Dictionary, derrubou: bool) -> String:
+	var hb: Dictionary = g["hitbox"]
+	var centro: float = -(float(hb["y"]) + float(hb["h"]) * 0.5)
+	var rel: float = centro / CORPO_ALTURA
+	if rel < 0.35:
+		return "rasteira" if derrubou else "baixo"
+	if rel < 0.7:
+		return "medio"
+	return "alto"
+
+
+# Nome da animação (SLOTS do Formato) para o estado atual. "" = animação do golpe.
+func slot_animacao() -> String:
+	match estado:
+		Estado.PARADO:
+			return "parado"
+		Estado.ANDANDO:
+			return "andando"
+		Estado.PULANDO, Estado.DECOLANDO:
+			return "pulando"
+		Estado.DEFENDENDO:
+			return "defendendo"
+		Estado.GOLPEADO:
+			return "bloqueio" if bloqueado else "golpeado_" + reacao
+		Estado.CAIDO:
+			return "rasteira" if reacao == "rasteira" else "caido"
+		Estado.LEVANTANDO:
+			return "levantando"
+		Estado.ESQUIVANDO:
+			return "esquiva"
+		Estado.KO:
+			return "ko"
+		Estado.PARRY:
+			return "parry"
+		Estado.GUARDA_QUEBRADA:
+			return "guarda_quebrada"
+	return ""
+
+
 func receber_blowback(vx: float) -> void:
+	reacao = "medio"
 	estado = Estado.GOLPEADO
 	tempo = 0
 	duracao = HITSTUN_BLOWBACK
