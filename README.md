@@ -1,23 +1,56 @@
-# project-ember
+# Ember Engine
 
-# Ember (engine de jogos de luta)
+Engine 2D para criar jogos de luta, feita em **Godot 4.2** (GDScript). Roda em Android, iOS e desktop.
 
-Duas partes separadas: **engine** (`engine/`: combate, menus, editor) e **seu jogo** (`ui/`, `musica/`, `sons/`, `personagens/`).
-Veja `ui/LEIA-ME.md` e `sons/interface/LEIA-ME.md` para saber onde colocar cada arte, música e som.
+**Versão: 0.3.0** (pré-lançamento)
 
-## Fluxo
-Abertura (Ember Engine) > Título + aviso (toque/start) > Menu > **Seleção de personagens** > Luta. Todo modo que leva a uma luta passa pela seleção.
+Você traz os sprites, sons e músicas; a engine cuida do combate, dos menus, da seleção de personagens e do editor de personagens.
 
-## Combate (resumo)
-- **Just defense (parry):** apertar para trás nos 5 frames antes do golpe encostar. Sem dano e sem gastar a barra de defesa. Segurar para trás é defesa normal.
-- **Barra de defesa:** cada golpe defendido gasta uma parte (mais nos fortes). Zerou: guarda quebrada (1,25 s sem atacar nem defender) e a barra volta cheia. Sem quebrar, regenera devagar após 1 s sem defender golpe.
-- **Esquiva (ESQ):** distância fixa para todos, sem custo. Neutro ou para frente atravessa o oponente; com trás, rola para trás.
-- **BO (Blow Off)** (antes "CD"): golpe que joga o oponente longe. Golpes fortes (força 2 e 3) causam 30% menos dano.
-- **Tamanho e alcance em pixels:** `altura_px` do personagem define o corpo e a escala dos golpes; a hitbox de cada golpe é em px.
-- **Modo debug:** Configurações > Luta > Modo debug. Mostra corpo, hitbox, janela de parry e dados. Desligado por padrão.
+## O que ela faz
 
-## Sprites e frames (60 FPS)
-Cada golpe tem frames fixos (startup + active + recovery). Os sprites que você coloca são distribuídos automaticamente nesses frames; marque o "sprite de impacto" para alinhar com o active.
+**Combate (60 FPS)**
+- Golpes por quadros: startup, active e recovery. Os sprites do golpe são distribuídos automaticamente nesses frames.
+- Hitbox e corpo em pixels; a altura do personagem define a escala do corpo e dos golpes.
+- Defesa, *just defense* (parry), barra de defesa com guarda quebrada, esquiva de distância fixa, Blow Off (BO), combos e KO.
+- Reação de dano por altura do golpe (alto, meio, baixo, rasteira) e fila de eventos de som.
+- Modo debug: mostra hitboxes, hurtboxes e dados de combate.
+
+**Telas e menus**
+- Abertura, título, menu em carrossel de ícones (esquerda/direita troca de menu, cima/baixo de submenu), seleção de personagens em trios (estilo KOF) e luta.
+- Música por menu, músicas sorteadas na seleção, tema por personagem e disco de música com nome da faixa e mute.
+- Toque e controle: o modo é detectado sozinho. Ícones de botão de Xbox e PlayStation.
+
+**Editor de personagem (dentro do app)**
+- Golpes fixos (LP, LK, HP, HK, BO) e golpes personalizados, com prioridade por ordem na lista.
+- Timeline de sprites por golpe e por animação, importação de vários sprites de uma vez, sons por golpe e por evento, artes de seleção e card.
+- Backup do personagem em texto (copiar e colar).
+
+**Configurações**
+- Idioma, modo debug, rotação da tela, HUD do sistema (aparelho, GPU, FPS, CPU, GPU, RAM e bateria, arrastável), modo de entrada e mapeamento de botões do controle para o Jogador 1 e o Jogador 2.
+
+## Estrutura
+
+| Pasta | Conteúdo |
+|---|---|
+| `engine/` | Código da engine (núcleo, luta, menus, editor, formato, sons, configurações) |
+| `testes/` | Testes automáticos (rodam no GitHub Actions) |
+| `personagens/` | Pasta onde ficam os personagens. A engine traz dois bonecos de treino de exemplo |
+| `ui/`, `musica/`, `sons/` | Pastas onde você coloca as artes, músicas e sons. Veja `ui/LEIA-ME.md` e `sons/interface/LEIA-ME.md` |
+
+## Como começar
+
+1. Abra o projeto no Godot 4.2 (ou mais novo). A cena principal é `engine/inicio/Abertura.tscn`.
+2. Coloque suas artes e sons nas pastas indicadas nos `LEIA-ME.md`. Tudo é opcional: sem arte, a engine desenha formas simples.
+3. Crie personagens pelo editor do app (Editar > Criar personagem) ou copie `personagens/_modelo`.
+4. Exporte para Android ou iOS pelos presets do projeto.
+
+## Personagem
+
+Cada personagem é uma pasta com `personagem.json`, mais `sprites/`, `golpes/`, `arte/` e `sons/` (opcionais). Os sprites ficam alinhados pelo centro dos pés e virados para a direita.
 
 ## Testes
-`godot --headless --script testes/teste_nucleo.gd` e `testes/teste_pacote.gd` (rodam no GitHub Actions a cada push).
+
+```
+godot --headless --script testes/teste_nucleo.gd
+godot --headless --script testes/teste_pacote.gd
+```
