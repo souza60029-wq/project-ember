@@ -89,6 +89,9 @@ func _testar_compilacao() -> void:
 		"res://engine/nucleo/Sprites.gd",
 		"res://engine/nucleo/Glifos.gd",
 		"res://engine/selecao/Selecao.gd",
+		"res://engine/config/Config.gd",
+		"res://engine/config/Configuracoes.gd",
+		"res://engine/sistema/HudSistema.gd",
 		"res://engine/luta/Luta.gd",
 	]:
 		_checar("compila " + caminho.get_file(), load(caminho) != null)

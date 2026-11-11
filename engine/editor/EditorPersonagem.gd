@@ -126,6 +126,7 @@ var _lbl_slots_box: VBoxContainer
 var _msgs: Array[Label] = []
 var _fd: FileDialog
 var _fd_acao: Callable
+var _fd_varios: bool = false
 var _pops := {}
 
 
@@ -419,6 +420,7 @@ func _montar_popups() -> void:
 	_fd.access = FileDialog.ACCESS_FILESYSTEM
 	_fd.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	_fd.file_selected.connect(_on_arquivo)
+	_fd.files_selected.connect(_on_arquivos)
 	add_child(_fd)
 
 	# Adicionar golpe
@@ -916,6 +918,11 @@ func _alvo_editavel() -> bool:
 	return _alvo_slot != "" or _sel >= 0
 
 
+func _novos_quadros(caminhos: PackedStringArray) -> void:
+	for c in caminhos:
+		_novo_quadro(str(c))
+
+
 func _novo_quadro(origem: String) -> void:
 	if not _alvo_editavel():
 		_mensagem("Adicione um golpe primeiro (botao Adicionar Golpe).")
@@ -1026,7 +1033,7 @@ func _on_linha_input(ev: InputEvent) -> void:
 			if (d["r"] as Rect2).has_point(p):
 				if int(d["i"]) >= n:
 					if _alvo_editavel():
-						_escolher_imagem(_novo_quadro)
+						_escolher_imagens(_novos_quadros)
 					else:
 						_mensagem("Adicione um golpe primeiro (botao Adicionar Golpe).")
 				else:
@@ -1056,24 +1063,45 @@ func _on_info_input(ev: InputEvent) -> void:
 
 
 func _escolher_imagem(depois: Callable) -> void:
-	_abrir_dialogo("Escolher imagem", PackedStringArray(["*.png, *.webp, *.jpg, *.jpeg ; Imagens"]), depois)
+	_abrir_dialogo("Escolher imagem", PackedStringArray(["*.png, *.webp, *.jpg, *.jpeg ; Imagens"]), depois, false)
+
+
+# Vários sprites de uma vez (a ordem segue o nome do arquivo).
+func _escolher_imagens(depois: Callable) -> void:
+	_abrir_dialogo("Escolher sprites", PackedStringArray(["*.png, *.webp, *.jpg, *.jpeg ; Imagens"]), depois, true)
+
 
 func _escolher_som(depois: Callable) -> void:
 	_abrir_dialogo("Escolher som", PackedStringArray(["*.ogg, *.wav, *.mp3 ; Sons"]), depois)
 
-func _abrir_dialogo(titulo: String, filtros: PackedStringArray, depois: Callable) -> void:
+# Usa o seletor de arquivos do sistema (iOS, Android, desktop) quando o Godot tem esse recurso
+# (Godot 4.3 ou mais novo); no 4.2 cai no seletor do próprio Godot, também com seleção múltipla.
+func _abrir_dialogo(titulo: String, filtros: PackedStringArray, depois: Callable, varios: bool) -> void:
 	_fd_acao = depois
+	_fd_varios = varios
 	_fd.title = titulo
 	_fd.filters = filtros
+	_fd.file_mode = FileDialog.FILE_MODE_OPEN_FILES if varios else FileDialog.FILE_MODE_OPEN_FILE
+	if "use_native_dialog" in _fd:
+		_fd.set("use_native_dialog", true)
 	_fd.popup_centered_ratio(0.9)
 
+
 func _on_arquivo(caminho: String) -> void:
-	if _fd_acao.is_valid():
+	if _fd_acao.is_valid() and not _fd_varios:
 		_fd_acao.call(caminho)
 
 
-# Copia o arquivo escolhido para a pasta do personagem (salva o personagem antes, se preciso).
-# Devolve o caminho relativo, ou "" se falhou.
+func _on_arquivos(caminhos: PackedStringArray) -> void:
+	if not _fd_acao.is_valid():
+		return
+	var lista: Array = Array(caminhos)
+	lista.sort_custom(func(a, b): return str(a).naturalnocasecmp_to(str(b)) < 0)
+	if _fd_varios:
+		_fd_acao.call(PackedStringArray(lista))
+	elif not lista.is_empty():
+		_fd_acao.call(str(lista[0]))
+
 
 func _importar(origem: String, rel: String) -> String:
 	var e: String = _salvar()

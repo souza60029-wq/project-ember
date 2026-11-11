@@ -1,7 +1,7 @@
 extends RefCounted
 
 # Lista fixa dos eventos de som do personagem e dos sons comuns.
-# O nome do arquivo é o nome do evento. Ex.: personagens/ash_crimson/sons/voz_dano_leve.ogg
+# O nome do arquivo é o nome do evento. Ex.: personagens/boneco_treino_1/sons/voz_dano_leve.ogg
 
 const TODOS := [
 	"ataque_leve", "ataque_forte", "ataque_especial",

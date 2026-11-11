@@ -1,0 +1,16 @@
+{
+  "formato": 1,
+  "id": "boneco_treino_2",
+  "nome": "Boneco de Treino 2",
+  "magias": [],
+  "golpes": [
+    {"nome": "Especial Super", "botao": "HP", "carga": "", "carga_seg": 0.0, "forca": 3, "startup": 20, "active": 6, "recovery": 40, "dano": 300, "custo": 100, "energia_ganha": 0, "antichao": false, "blowoff": false, "so_ar": false, "hitbox": {"x": 20, "y": -130, "w": 120, "h": 120}},
+    {"nome": "Especial Tras", "botao": "HP", "carga": "tras", "carga_seg": 0.5, "forca": 3, "startup": 16, "active": 5, "recovery": 30, "dano": 140, "custo": 0, "energia_ganha": 30, "antichao": false, "blowoff": false, "so_ar": false, "hitbox": {"x": 40, "y": -110, "w": 80, "h": 50}},
+    {"nome": "Especial Baixo", "botao": "HK", "carga": "baixo", "carga_seg": 0.5, "forca": 3, "startup": 12, "active": 4, "recovery": 28, "dano": 120, "custo": 0, "energia_ganha": 30, "antichao": false, "blowoff": false, "so_ar": false, "hitbox": {"x": 40, "y": -30, "w": 80, "h": 30}},
+    {"nome": "Blow Off", "botao": "BO", "carga": "", "carga_seg": 0.0, "forca": 3, "startup": 12, "active": 4, "recovery": 26, "dano": 100, "custo": 0, "energia_ganha": 0, "antichao": false, "blowoff": true, "so_ar": false, "hitbox": {"x": 20, "y": -100, "w": 70, "h": 60}},
+    {"nome": "Soco Forte", "botao": "HP", "carga": "", "carga_seg": 0.0, "forca": 2, "startup": 10, "active": 4, "recovery": 18, "dano": 90, "custo": 0, "energia_ganha": 0, "antichao": false, "blowoff": false, "so_ar": false, "hitbox": {"x": 30, "y": -105, "w": 60, "h": 35}},
+    {"nome": "Chute Forte", "botao": "HK", "carga": "", "carga_seg": 0.0, "forca": 3, "startup": 14, "active": 4, "recovery": 24, "dano": 110, "custo": 0, "energia_ganha": 0, "antichao": false, "blowoff": false, "so_ar": false, "hitbox": {"x": 30, "y": -60, "w": 70, "h": 40}},
+    {"nome": "Soco Fraco", "botao": "LP", "carga": "", "carga_seg": 0.0, "forca": 1, "startup": 5, "active": 3, "recovery": 8, "dano": 40, "custo": 0, "energia_ganha": 0, "antichao": false, "blowoff": false, "so_ar": false, "hitbox": {"x": 30, "y": -100, "w": 40, "h": 30}},
+    {"nome": "Chute Fraco", "botao": "LK", "carga": "", "carga_seg": 0.0, "forca": 1, "startup": 6, "active": 3, "recovery": 10, "dano": 40, "custo": 0, "energia_ganha": 0, "antichao": false, "blowoff": false, "so_ar": false, "hitbox": {"x": 25, "y": -50, "w": 50, "h": 30}}
+  ]
+}

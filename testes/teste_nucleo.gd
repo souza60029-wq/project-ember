@@ -20,6 +20,7 @@ func _init() -> void:
 	_testar_caixa_barra()
 	_testar_combate()
 	_testar_tempo_sprites()
+	_testar_sistema()
 	_testar_eventos()
 	print("Resultado: %d ok, %d falha(s)" % [passou, falhas])
 	quit(1 if falhas > 0 else 0)
@@ -44,7 +45,7 @@ func _testar_formato() -> void:
 		return
 	var per: Dictionary = r["personagem"]
 	_checar("fixture tem 2 golpes", per["golpes"].size() == 2)
-	_checar("sanitizar_id", Formato.sanitizar_id("Ash Crimson!") == "ash_crimson")
+	_checar("sanitizar_id", Formato.sanitizar_id("Boneco de Treino!") == "boneco_de_treino")
 	var futuro: Dictionary = Formato.normalizar({"formato": 99, "nome": "X", "golpes": []})
 	_checar("versão futura recusada", not bool(futuro["ok"]))
 	var ms: Array = Formato.moveset(per)
@@ -253,3 +254,23 @@ func _testar_tempo_sprites() -> void:
 	var r: Dictionary = Formato.normalizar({"formato": 1, "nome": "Velho", "golpes": [{"botao": "CD", "nome": "x"}]})
 	_checar("personagem antigo migra", bool(r["ok"]) and str(r["personagem"]["golpes"][0]["botao"]) == "BO")
 	_checar("personagem tem slots de sprite", (r["personagem"]["sprites"] as Dictionary).has("parry"))
+
+
+func _testar_sistema() -> void:
+	print("Controles e HUD do sistema")
+	var Cfg = preload("res://engine/config/Config.gd")
+	var m: Dictionary = Cfg.mapa_padrao()
+	_checar("mapa padrão tem todos os botões", m.size() == Cfg.BOTOES_FISICOS.size())
+	_checar("mapa padrão: X é soco fraco", m["X"] == "LP" and m["RB"] == "BO" and m["LB"] == "ESQ")
+	_checar("funções incluem 'nenhuma'", Cfg.FUNCOES.has(""))
+	_checar("rotações e HUD", Cfg.ROTACOES.size() == 3 and Cfg.HUD_MODOS.size() == 3)
+	var Hud = preload("res://engine/sistema/HudSistema.gd")
+	var h = Hud.new()
+	_checar("iPhone 8 tem botão home", h._tipo_iphone("iPhone10,1") == "home")
+	_checar("iPhone X tem notch", h._tipo_iphone("iPhone10,3") == "notch")
+	_checar("iPhone 13 tem notch", h._tipo_iphone("iPhone14,5") == "notch")
+	_checar("iPhone 14 tem notch", h._tipo_iphone("iPhone14,7") == "notch")
+	_checar("iPhone SE 3 tem botão home", h._tipo_iphone("iPhone14,6") == "home")
+	_checar("iPhone 14 Pro tem Dynamic Island", h._tipo_iphone("iPhone15,2") == "island")
+	_checar("iPhone 16e tem notch", h._tipo_iphone("iPhone17,5") == "notch")
+	h.free()

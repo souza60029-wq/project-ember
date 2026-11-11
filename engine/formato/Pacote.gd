@@ -15,7 +15,7 @@ const RAIZES := ["res://personagens/", "user://personagens/"]
 
 
 # personagem: dicionário do personagem como está no editor.
-# pasta_midia: pasta onde estão os arquivos (ex.: "user://personagens/ash_crimson/").
+# pasta_midia: pasta onde estão os arquivos (ex.: "user://personagens/boneco_treino_1/").
 static func exportar(personagem: Dictionary, pasta_midia: String) -> Dictionary:
 	var norm: Dictionary = Formato.normalizar(personagem)
 	if not norm["ok"]:

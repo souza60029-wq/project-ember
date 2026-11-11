@@ -9,7 +9,7 @@ const Personagem = preload("res://engine/nucleo/Personagem.gd")
 const Formato = preload("res://engine/formato/Formato.gd")
 const Sprites = preload("res://engine/nucleo/Sprites.gd")
 
-const PERSONAGEM_INICIAL := "res://personagens/ash_crimson/personagem.json"
+const PERSONAGEM_INICIAL := "res://personagens/boneco_treino_1/personagem.json"
 const VIEW_W := 960.0
 const VIEW_H := 540.0
 const FRAMES_KO := 150
@@ -70,7 +70,7 @@ func _process(_delta: float) -> void:
 
 func _physics_process(_delta: float) -> void:
 	_passo_jogador(p1, (_dir_pad(0) + _vec_dpad()).limit_length(1.0), _entrada_p1(), mask1)
-	_passo_jogador(p2, _dir_pad(1), _entrada_pad(1), mask2)
+	_passo_jogador(p2, _dir_pad(1), _entrada_pad(1, 2), mask2)
 	_resolver_combate(p1, p2)
 	_resolver_combate(p2, p1)
 	_separar_corpos()
@@ -191,9 +191,15 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if toques.has(sd.index):
 			toques[sd.index]["pos"] = sd.position
 
+# Com controle conectado os botões de luta na tela somem (e deixam de receber toque).
+func _modo_controle() -> bool:
+	return has_node("/root/Config") and str(get_node("/root/Config").modo_efetivo()) == "controle"
+
 func _alvo_toque(p: Vector2) -> String:
 	if RECT_RESET.has_point(p):
 		return "RESET"
+	if _modo_controle():
+		return ""
 	if p.distance_to(DPAD_C) <= DPAD_R * 1.2:
 		return "DPAD"
 	var melhor := ""
@@ -237,18 +243,14 @@ func _dir_pad(dev: int) -> Vector2:
 		v.y += 1.0
 	return v.limit_length(1.0)
 
-func _entrada_pad(dev: int) -> Dictionary:
-	return {
-		"LP": Input.is_joy_button_pressed(dev, JOY_BUTTON_X),
-		"LK": Input.is_joy_button_pressed(dev, JOY_BUTTON_A),
-		"HP": Input.is_joy_button_pressed(dev, JOY_BUTTON_Y),
-		"HK": Input.is_joy_button_pressed(dev, JOY_BUTTON_B),
-		"BO": Input.is_joy_button_pressed(dev, JOY_BUTTON_RIGHT_SHOULDER),
-		"ESQ": Input.is_joy_button_pressed(dev, JOY_BUTTON_LEFT_SHOULDER),
-	}
+# Botões do controle, pelo mapa do jogador (Configurações > Controles).
+func _entrada_pad(dev: int, jogador: int) -> Dictionary:
+	if has_node("/root/Config"):
+		return get_node("/root/Config").entrada_luta(dev, jogador)
+	return {"LP": false, "LK": false, "HP": false, "HK": false, "BO": false, "ESQ": false}
 
 func _entrada_p1() -> Dictionary:
-	var pad := _entrada_pad(0)
+	var pad := _entrada_pad(0, 1)
 	var tocado := _botoes_tocados()
 	var r := {}
 	for k in TECLAS:
@@ -558,6 +560,8 @@ func _avisos(p, x: float, da_direita: bool) -> void:
 		_texto(texto, Vector2(x, 150.0), 16, cor)
 
 func _desenhar_controles() -> void:
+	if _modo_controle():
+		return
 	var tocado := _botoes_tocados()
 	draw_circle(DPAD_C, DPAD_R, Color(1.0, 1.0, 1.0, 0.1))
 	var dv: Vector2 = _vec_dpad()

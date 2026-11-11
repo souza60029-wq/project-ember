@@ -14,10 +14,14 @@ const Sprites = preload("res://engine/nucleo/Sprites.gd")
 const PASTA_UI := "res://ui/selecao/"
 const VIEW_W := 960.0
 const VIEW_H := 540.0
-const RAIO := 38.0
-const PASSO_X := 66.0
-const PASSO_Y := 57.0
-const TOPO_GRADE := 120.0
+# Cards em retângulos na vertical, agrupados de 3 em 3 (os trios do KOF).
+const CARD_W := 50.0
+const CARD_H := 92.0
+const CARD_FOLGA := 4.0
+const GRUPO_FOLGA := 18.0
+const COLUNAS := 6
+const TOPO_GRADE := 104.0
+const PASSO_LINHA := 104.0
 const LIMIAR_STICK := 0.6
 const COR_P1 := Color(0.3, 1.0, 0.4)
 const COR_P2 := Color(0.3, 0.6, 1.0)
@@ -26,7 +30,7 @@ var _itens: Array = []
 var _cursor: int = 0
 var _fase: int = 0 # 0 = jogador 1 escolhendo, 1 = jogador 2
 var _escolha1: int = -1
-var _cols: int = 5
+var _cols: int = 6
 var _eixo_estado: Dictionary = {}
 var _saindo: bool = false
 var _rect_ok := Rect2(380.0, 478.0, 200.0, 42.0)
@@ -51,7 +55,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_itens = get_node("/root/Catalogo").lista()
 	var n: int = _itens.size()
-	_cols = clampi(int(ceil(sqrt(float(maxi(n, 1))) * 1.6)), 3, 8)
+	_cols = COLUNAS
 	# Música sorteada de musica/selecao/ (várias); se a pasta estiver vazia, usa musica/selecao.
 	get_node("/root/Audio").tocar_aleatoria("selecao", "selecao")
 
@@ -62,23 +66,32 @@ func _process(_d: float) -> void:
 
 # ---------- Geometria ----------
 
+func _escala() -> float:
+	var linhas: int = int(ceil(float(maxi(_itens.size(), 1)) / float(_cols)))
+	return clampf(3.0 / float(linhas), 0.55, 1.0)
+
+
+func _tam_card() -> Vector2:
+	return Vector2(CARD_W, CARD_H) * _escala()
+
+
 func _centro(i: int) -> Vector2:
-	var linhas: int = int(ceil(float(_itens.size()) / float(_cols)))
-	var l: int = i / _cols
-	var c: int = i % _cols
-	var largura: float = (_cols - 1) * PASSO_X + PASSO_X * 0.5
-	var x0: float = (VIEW_W - largura) * 0.5
-	var desloc: float = PASSO_X * 0.5 if (l % 2 == 1) else 0.0
-	var topo: float = TOPO_GRADE + maxf(0.0, (5 - linhas)) * PASSO_Y * 0.5
-	return Vector2(x0 + c * PASSO_X + desloc, topo + l * PASSO_Y)
+	var e: float = _escala()
+	var lg: float = 3.0 * CARD_W * e + 2.0 * CARD_FOLGA * e
+	var total: float = 2.0 * lg + GRUPO_FOLGA
+	var x0: float = (VIEW_W - total) * 0.5
+	var col: int = i % _cols
+	var linha: int = i / _cols
+	var grupo: int = col / 3
+	var dentro: int = col % 3
+	var x: float = x0 + float(grupo) * (lg + GRUPO_FOLGA) + float(dentro) * (CARD_W + CARD_FOLGA) * e + CARD_W * e * 0.5
+	var y: float = TOPO_GRADE + float(linha) * PASSO_LINHA * e + CARD_H * e * 0.5
+	return Vector2(x, y)
 
 
-func _hex(c: Vector2, r: float) -> PackedVector2Array:
-	var pts := PackedVector2Array()
-	for k in range(6):
-		var a: float = deg_to_rad(60.0 * float(k) - 90.0)
-		pts.append(c + Vector2(cos(a), sin(a)) * r)
-	return pts
+func _rect_card(i: int) -> Rect2:
+	var t: Vector2 = _tam_card()
+	return Rect2(_centro(i) - t * 0.5, t)
 
 
 # ---------- Desenho ----------
@@ -96,6 +109,7 @@ func _draw() -> void:
 	else:
 		_arte_lado(true)
 		_arte_lado(false)
+		_placas_trios()
 		for i in range(_itens.size()):
 			_desenhar_card(i)
 		_desenhar_cursores()
@@ -111,30 +125,48 @@ func _cabecalho() -> void:
 	draw_string(ThemeDB.fallback_font, Vector2(560.0, 48.0), _t("sel_player2"), HORIZONTAL_ALIGNMENT_LEFT, 220.0, 26, a2.lerp(COR_P2, 0.5))
 
 
+# Placa atrás de cada trio (grupo de 3 cards).
+func _placas_trios() -> void:
+	var n: int = _itens.size()
+	var i: int = 0
+	while i < n:
+		var ultimo: int = mini(i + 2, n - 1)
+		while ultimo > i and (ultimo / _cols) != (i / _cols):
+			ultimo -= 1
+		var a: Rect2 = _rect_card(i)
+		var b: Rect2 = _rect_card(ultimo)
+		var placa: Rect2 = a.merge(b).grow(5.0)
+		draw_rect(placa, Color(0.0, 0.0, 0.0, 0.35))
+		draw_rect(placa, Color(1.0, 0.7, 0.3, 0.45), false, 1.5)
+		i += 3
+
+
 func _desenhar_card(i: int) -> void:
 	var item: Dictionary = _itens[i]
 	var per: Dictionary = item["personagem"]
-	var c: Vector2 = _centro(i)
-	var pts: PackedVector2Array = _hex(c, RAIO)
+	var r: Rect2 = _rect_card(i)
 	var tex: Texture2D = _arte(item, str(per.get("arte_card", "")))
 	if tex != null:
-		var cores := PackedColorArray()
-		var uvs := PackedVector2Array()
-		for p in pts:
-			cores.append(Color.WHITE)
-			uvs.append(Vector2((p.x - (c.x - RAIO)) / (RAIO * 2.0), (p.y - (c.y - RAIO)) / (RAIO * 2.0)))
-		draw_polygon(pts, cores, uvs, tex)
+		# Preenche o retângulo vertical cortando as sobras (centralizado).
+		var ts: Vector2 = tex.get_size()
+		var alvo: float = r.size.x / r.size.y
+		var src := Rect2(Vector2.ZERO, ts)
+		if ts.x / ts.y > alvo:
+			src.size.x = ts.y * alvo
+			src.position.x = (ts.x - src.size.x) * 0.5
+		else:
+			src.size.y = ts.x / alvo
+			src.position.y = (ts.y - src.size.y) * 0.5
+		draw_texture_rect_region(tex, r, src)
 	else:
-		draw_colored_polygon(pts, Color(0.12, 0.08, 0.1, 0.95))
+		draw_rect(r, Color(0.12, 0.08, 0.1, 0.95))
 		var nome: String = str(per["nome"]).left(2).to_upper()
-		draw_string(ThemeDB.fallback_font, Vector2(c.x - RAIO, c.y + 8.0), nome, HORIZONTAL_ALIGNMENT_CENTER, RAIO * 2.0, 22, Color(1, 1, 1, 0.85))
+		draw_string(ThemeDB.fallback_font, Vector2(r.position.x, r.get_center().y + 8.0), nome, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 22, Color(1, 1, 1, 0.85))
 	var mold: Texture2D = _ui("moldura_card")
 	if mold != null:
-		draw_texture_rect(mold, Rect2(c - Vector2(RAIO, RAIO), Vector2(RAIO, RAIO) * 2.0), false)
+		draw_texture_rect(mold, r, false)
 	else:
-		var fechado: PackedVector2Array = pts.duplicate()
-		fechado.append(pts[0])
-		draw_polyline(fechado, Color(1, 1, 1, 0.55), 2.0)
+		draw_rect(r, Color(1, 1, 1, 0.55), false, 2.0)
 
 
 func _desenhar_cursores() -> void:
@@ -145,18 +177,15 @@ func _desenhar_cursores() -> void:
 
 
 func _cursor_em(i: int, cor: Color, nome_ui: String, ativo: bool) -> void:
-	var c: Vector2 = _centro(i)
+	var r: Rect2 = _rect_card(i)
 	var tex: Texture2D = _ui(nome_ui)
 	if tex != null:
-		draw_texture_rect(tex, Rect2(c - Vector2(RAIO, RAIO) * 1.1, Vector2(RAIO, RAIO) * 2.2), false)
+		draw_texture_rect(tex, r.grow(6.0), false)
 		return
-	var pts: PackedVector2Array = _hex(c, RAIO + 2.0)
-	pts.append(pts[0])
 	var pulso: float = 0.75 + 0.25 * sin(Time.get_ticks_msec() / 120.0) if ativo else 1.0
-	draw_polyline(pts, Color(cor.r, cor.g, cor.b, pulso), 4.0)
+	draw_rect(r.grow(3.0), Color(cor.r, cor.g, cor.b, pulso), false, 4.0)
 
 
-# Arte grande de cada lado: jogador 1 à esquerda, jogador 2 à direita.
 func _arte_lado(esquerda: bool) -> void:
 	var idx: int = -1
 	if esquerda:
@@ -310,7 +339,7 @@ func _tocar(p: Vector2) -> void:
 		_confirmar()
 		return
 	for i in range(_itens.size()):
-		if p.distance_to(_centro(i)) <= RAIO * 0.9:
+		if _rect_card(i).has_point(p):
 			if i == _cursor:
 				_confirmar()
 			else:

@@ -8,6 +8,7 @@ extends Control
 # Autoloads são acessados por get_node, para o script compilar sem eles.
 
 const Glifos = preload("res://engine/nucleo/Glifos.gd")
+const Configuracoes = preload("res://engine/config/Configuracoes.gd")
 const CENA_EDITOR := "res://engine/editor/EditorPersonagem.tscn"
 const PASTA_MENU := "res://ui/menu/"
 const VIEW_W := 960.0
@@ -100,6 +101,7 @@ var aba: int = 1
 var sub: int = 0
 var foco: int = 0 # 0 = linha de abas, 1 = submenu
 var config_aberto: bool = false
+var _overlay: Variant = null
 var config_nivel: int = 0
 var config_cat: int = 0
 var cfg_foco: int = 0
@@ -530,13 +532,18 @@ func _focaveis_cfg(lista: Array) -> Array:
 
 # ---------- Dados da árvore ----------
 
+# Menus sem submenu mostram uma única opção (o próprio menu): só entra ao confirmar.
 func _filhos_aba() -> Array:
 	var item: Dictionary = ABAS[aba]
-	return item.get("filhos", [])
+	if item.has("filhos"):
+		return item["filhos"]
+	return [{"chave": item["chave"], "icone": "icone_" + str(item["icone"]), "acao": item.get("acao", "em_breve")}]
 
 # ---------- Entrada ----------
 
 func _unhandled_input(ev: InputEvent) -> void:
+	if _overlay != null:
+		return
 	var st := ev as InputEventScreenTouch
 	if st != null and st.pressed:
 		_tocar(st.position)
@@ -581,10 +588,7 @@ func _tocar(p: Vector2) -> void:
 			for i in range(ABAS.size()):
 				var c: Vector2 = _centro_icone(i)
 				if Rect2(c - Vector2(ICON_ESPACO * 0.5, 50.0), Vector2(ICON_ESPACO, 120.0)).has_point(p):
-					if i == aba:
-						_confirmar()
-					else:
-						_selecionar_aba(i)
+					_selecionar_aba(i)
 					return
 			return
 	var e: Dictionary = _acertar(p)
@@ -684,20 +688,23 @@ func _selecionar_aba(i: int) -> void:
 		_tocar_musica_da_aba()
 
 func _confirmar() -> void:
-	var item: Dictionary = ABAS[aba]
-	if item.has("filhos"):
-		var f: Array = _filhos_aba()
-		if not f.is_empty():
-			_executar(f[sub])
-	else:
-		_executar(item)
+	var f: Array = _filhos_aba()
+	if not f.is_empty():
+		_executar(f[clampi(sub, 0, f.size() - 1)])
 
+# Configurações: tela própria (Configuracoes.gd) por cima do menu.
 func _abrir_config() -> void:
-	config_aberto = true
-	config_nivel = 0
-	cfg_foco = 0
+	if _overlay != null:
+		return
 	_som("menu_confirma")
 	_tocar_musica("menu_configuracoes")
+	_overlay = Configuracoes.new()
+	_overlay.fechado.connect(_on_config_fechada)
+	add_child(_overlay)
+
+func _on_config_fechada() -> void:
+	_overlay = null
+	_tocar_musica_da_aba()
 
 func _voltar_config_tudo() -> void:
 	config_nivel = 0

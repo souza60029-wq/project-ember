@@ -1,0 +1,4 @@
+Arquivo a apagar do repositorio (foi renomeado para personagens/boneco_treino_1):
+  personagens/ash_crimson/personagem.json
+(Se voce ja tem arquivos do Ash dentro de personagens/ash_crimson/, mantenha essa pasta
+para o seu jogo e apague so o personagem.json de teste, ou deixe a pasta como esta.)

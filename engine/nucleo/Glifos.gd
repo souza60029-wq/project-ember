@@ -28,6 +28,10 @@ static func desenhar(c: CanvasItem, tipo: String, centro: Vector2, raio: float, 
 			_pilula(c, centro, raio, "L1" if ps else "LB")
 		"RB":
 			_pilula(c, centro, raio, "R1" if ps else "RB")
+		"LT":
+			_pilula(c, centro, raio, "L2" if ps else "LT")
+		"RT":
+			_pilula(c, centro, raio, "R2" if ps else "RT")
 		"DPAD", "DPAD_LR":
 			_direcional(c, centro, raio, tipo == "DPAD_LR")
 
