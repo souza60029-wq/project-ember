@@ -62,6 +62,7 @@ func _init() -> void:
 
 func _ready() -> void:
 	_carregar_lutadores()
+	_tocar_tema()
 	_reiniciar_luta()
 
 func _process(_delta: float) -> void:
@@ -97,6 +98,15 @@ func _carregar_lutadores() -> void:
 		b = a
 	_aplicar(p1, a, 1)
 	_aplicar(p2, b, 2)
+
+# Música da luta: tema do jogador 1 (personagens/<id>/musica); sem tema, o do jogador 2;
+# sem nenhum, sorteia de musica/luta/.
+func _tocar_tema() -> void:
+	if not has_node("/root/Audio"):
+		return
+	var audio: Node = get_node("/root/Audio")
+	if not (audio.tocar_musica_personagem(id1) or audio.tocar_musica_personagem(id2)):
+		audio.tocar_aleatoria("luta", "luta")
 
 func _obter(id: String) -> Dictionary:
 	if has_node("/root/Catalogo"):

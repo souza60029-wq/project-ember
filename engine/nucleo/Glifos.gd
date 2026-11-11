@@ -22,6 +22,8 @@ static func desenhar(c: CanvasItem, tipo: String, centro: Vector2, raio: float, 
 			_face(c, tipo, centro, raio, ps)
 		"START":
 			_pilula(c, centro, raio, "START")
+		"SELECT":
+			_pilula(c, centro, raio, "SELECT")
 		"LB":
 			_pilula(c, centro, raio, "L1" if ps else "LB")
 		"RB":

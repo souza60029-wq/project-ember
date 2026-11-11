@@ -11,6 +11,8 @@ const PASTA_INTERFACE := "res://sons/interface/"
 const PASTA_MUSICA := "res://musica/"
 const PASTAS_PERSONAGEM := ["res://personagens/", "user://personagens/"]
 const EXTENSOES := ["ogg", "mp3", "wav"]
+signal faixa_mudou(nome: String)
+
 const CANAIS := 8
 const FADE_MUSICA := 0.5
 const VOLUME_MUDO := -60.0
@@ -21,6 +23,9 @@ var _ativa: int = 0
 var _nome_musica: String = ""
 var _cache := {}
 var _fades := {}
+var nome_faixa: String = ""
+var musica_muda: bool = false
+var _lista_atual: String = ""
 
 
 func _ready() -> void:
@@ -31,6 +36,7 @@ func _ready() -> void:
 	for i in 2:
 		var m := AudioStreamPlayer.new()
 		m.volume_db = VOLUME_MUDO
+		m.finished.connect(_ao_terminar.bind(m))
 		add_child(m)
 		_musicas.append(m)
 
@@ -66,22 +72,94 @@ func tocar_interface_ou(nome: String, reserva: String) -> void:
 
 
 func tocar_musica(nome: String, repetir: bool = true) -> void:
-	if nome == _nome_musica and _musicas[_ativa].playing:
+	_lista_atual = ""
+	_tocar_arquivo(_achar_base(PASTA_MUSICA + nome), repetir)
+
+
+# Tema do personagem: personagens/<id>/musica.(ogg|mp3|wav). Devolve false se não existir.
+func tocar_musica_personagem(personagem_id: String) -> bool:
+	var c: String = _achar_no_personagem(personagem_id, "musica")
+	if c == "":
+		return false
+	_lista_atual = ""
+	_tocar_arquivo(c, true)
+	return true
+
+
+# Toca uma música sorteada de musica/<pasta>/ e sorteia outra quando ela acaba.
+# Sem arquivos na pasta, toca musica/<reserva>.
+func tocar_aleatoria(pasta: String, reserva: String = "") -> void:
+	if not _listar_musicas(PASTA_MUSICA + pasta + "/").is_empty():
+		_lista_atual = pasta
+		_proxima_da_lista()
+	elif reserva != "":
+		tocar_musica(reserva, true)
+
+
+func _proxima_da_lista() -> void:
+	var arquivos: Array = _listar_musicas(PASTA_MUSICA + _lista_atual + "/")
+	if arquivos.is_empty():
 		return
-	var stream = _carregar(_achar_base(PASTA_MUSICA + nome))
+	var escolha: String = str(arquivos[randi() % arquivos.size()])
+	var tentativas: int = 0
+	while arquivos.size() > 1 and escolha == _nome_musica and tentativas < 8:
+		escolha = str(arquivos[randi() % arquivos.size()])
+		tentativas += 1
+	_tocar_arquivo(escolha, false)
+
+
+func _ao_terminar(p: AudioStreamPlayer) -> void:
+	if p == _musicas[_ativa] and _lista_atual != "":
+		_proxima_da_lista()
+
+
+func _listar_musicas(pasta: String) -> Array:
+	var r: Array = []
+	var dir := DirAccess.open(pasta)
+	if dir == null:
+		return r
+	for f in dir.get_files():
+		var nome: String = str(f).trim_suffix(".import").trim_suffix(".remap")
+		if EXTENSOES.has(nome.get_extension().to_lower()) and not r.has(pasta + nome):
+			r.append(pasta + nome)
+	return r
+
+
+func _tocar_arquivo(caminho: String, repetir: bool) -> void:
+	if caminho != "" and caminho == _nome_musica and _musicas[_ativa].playing:
+		return
+	var stream = _carregar(caminho)
 	var saindo: AudioStreamPlayer = _musicas[_ativa]
 	_ativa = 1 - _ativa
 	var entrando: AudioStreamPlayer = _musicas[_ativa]
-	_nome_musica = nome if stream != null else ""
+	_nome_musica = caminho if stream != null else ""
 	if saindo.playing:
 		_fade(saindo, VOLUME_MUDO, true)
 	if stream == null:
+		nome_faixa = ""
+		faixa_mudou.emit("")
 		return
 	_definir_loop(stream, repetir)
 	entrando.stream = stream
 	entrando.volume_db = VOLUME_MUDO
 	entrando.play()
-	_fade(entrando, 0.0, false)
+	_fade(entrando, VOLUME_MUDO if musica_muda else 0.0, false)
+	nome_faixa = _nome_bonito(caminho)
+	faixa_mudou.emit(nome_faixa)
+
+
+func _nome_bonito(caminho: String) -> String:
+	return caminho.get_file().get_basename().replace("_", " ").replace("-", " ").capitalize()
+
+
+# Silencia só a música (os efeitos continuam).
+func definir_mudo(m: bool) -> void:
+	musica_muda = m
+	var p: AudioStreamPlayer = _musicas[_ativa]
+	if _fades.has(p):
+		_fades[p].kill()
+	if p.playing:
+		p.volume_db = VOLUME_MUDO if m else 0.0
 
 
 func parar_musica() -> void:

@@ -52,7 +52,8 @@ func _ready() -> void:
 	_itens = get_node("/root/Catalogo").lista()
 	var n: int = _itens.size()
 	_cols = clampi(int(ceil(sqrt(float(maxi(n, 1))) * 1.6)), 3, 8)
-	get_node("/root/Audio").tocar_musica("selecao", true)
+	# Música sorteada de musica/selecao/ (várias); se a pasta estiver vazia, usa musica/selecao.
+	get_node("/root/Audio").tocar_aleatoria("selecao", "selecao")
 
 
 func _process(_d: float) -> void:

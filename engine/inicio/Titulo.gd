@@ -2,6 +2,7 @@ extends Control
 
 # Tela de título: espera START (ou A) no controle, ou um toque na tela.
 # Texto: "TOQUE NA TELA" com toque; "APERTE START" quando o modo ativo é controle.
+# Esta tela mostra também o AVISO de projeto de fã (textos aviso_titulo e aviso_corpo em Textos.gd).
 # Logo em ui/logo.png; fundo em ui/fundo_titulo.png (opcional); música em musica/titulo.
 # Autoloads são acessados por get_node (não pelo nome), para o script compilar sem eles.
 
@@ -10,7 +11,7 @@ const LOGO := "res://ui/logo.png"
 const VIEW_W := 960.0
 const VIEW_H := 540.0
 const PISCAR_VELOCIDADE := 3.0
-const Y_TEXTO := 440.0
+const Y_TEXTO := 462.0
 
 var _fundo: Texture2D = null
 var _logo: Texture2D = null
@@ -59,13 +60,15 @@ func _draw() -> void:
 		draw_texture_rect(_fundo, Rect2(0.0, 0.0, VIEW_W, VIEW_H), false)
 	else:
 		draw_rect(Rect2(0.0, 0.0, VIEW_W, VIEW_H), Color.BLACK)
-	if _logo != null:
-		var tam := _logo.get_size()
-		var escala := minf(1.0, minf(VIEW_W * 0.6 / tam.x, VIEW_H * 0.5 / tam.y))
-		var w := tam * escala
-		draw_texture_rect(_logo, Rect2((VIEW_W - w.x) * 0.5, 60.0, w.x, w.y), false)
+	# Painel do aviso por cima da arte.
+	var painel := Rect2(80.0, 40.0, VIEW_W - 160.0, 372.0)
+	draw_rect(painel, Color(0.0, 0.0, 0.0, 0.72))
+	draw_rect(painel, Color(1.0, 1.0, 1.0, 0.35), false, 2.0)
+	var fonte: Font = ThemeDB.fallback_font
+	draw_string(fonte, Vector2(painel.position.x, painel.position.y + 34.0), str(_textos().t("aviso_titulo")), HORIZONTAL_ALIGNMENT_CENTER, painel.size.x, 24, Color(1.0, 0.85, 0.4))
+	draw_multiline_string(fonte, Vector2(painel.position.x + 24.0, painel.position.y + 64.0), str(_textos().t("aviso_corpo")), HORIZONTAL_ALIGNMENT_LEFT, painel.size.x - 48.0, 14, -1, Color(0.95, 0.95, 0.95))
 	var brilho := 0.5 + 0.5 * sin(_tempo * PISCAR_VELOCIDADE)
-	draw_string(ThemeDB.fallback_font, Vector2(0.0, Y_TEXTO), _texto_entrada(), HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 20, Color(1.0, 1.0, 1.0, 0.4 + 0.6 * brilho))
+	draw_string(fonte, Vector2(0.0, Y_TEXTO), _texto_entrada(), HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 22, Color(1.0, 1.0, 1.0, 0.4 + 0.6 * brilho))
 
 
 func _unhandled_input(ev: InputEvent) -> void:

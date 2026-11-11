@@ -1,10 +1,13 @@
 extends Control
 
-# Abertura: tela preta com a logo no centro. Some sozinha e passa para o título.
-# Toque ou START pula. Logo em ui/logo.png; se não existir, mostra o nome do app.
+# Abertura: "feito com a Ember Engine". Duas imagens que juntas formam a tela:
+#   ui/ember/fundo.png (fundo, ocupa a tela toda) e ui/ember/logo.png (logo, centralizada).
+# Separadas para você reaproveitar em outras telas. Se faltarem, usa fundo preto e o texto EMBER ENGINE.
+# Some sozinha e passa para o título. Toque ou START pula.
 
 const CENA_TITULO := "res://engine/inicio/Titulo.tscn"
-const LOGO := "res://ui/logo.png"
+const LOGO := "res://ui/ember/logo.png"
+const FUNDO := "res://ui/ember/fundo.png"
 const VIEW_W := 960.0
 const VIEW_H := 540.0
 const TEMPO_ENTRADA := 0.8
@@ -12,6 +15,7 @@ const TEMPO_LOGO := 2.0
 const TEMPO_SAIDA := 0.6
 
 var _logo: Texture2D = null
+var _fundo: Texture2D = null
 var _tempo := 0.0
 var _saindo := false
 
@@ -21,6 +25,8 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if ResourceLoader.exists(LOGO):
 		_logo = load(LOGO) as Texture2D
+	if ResourceLoader.exists(FUNDO):
+		_fundo = load(FUNDO) as Texture2D
 
 
 func _process(delta: float) -> void:
@@ -42,13 +48,15 @@ func _alpha() -> float:
 func _draw() -> void:
 	draw_rect(Rect2(0.0, 0.0, VIEW_W, VIEW_H), Color.BLACK)
 	var a := _alpha()
+	if _fundo != null:
+		draw_texture_rect(_fundo, Rect2(0.0, 0.0, VIEW_W, VIEW_H), false, Color(1.0, 1.0, 1.0, a))
 	if _logo != null:
 		var tam := _logo.get_size()
 		var escala := minf(VIEW_W * 0.7 / tam.x, VIEW_H * 0.8 / tam.y)
 		var w := tam * escala
 		draw_texture_rect(_logo, Rect2((VIEW_W - w.x) * 0.5, (VIEW_H - w.y) * 0.5, w.x, w.y), false, Color(1.0, 1.0, 1.0, a))
 	else:
-		draw_string(ThemeDB.fallback_font, Vector2(0.0, VIEW_H * 0.5), "EMBER", HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 36, Color(1.0, 1.0, 1.0, a))
+		draw_string(ThemeDB.fallback_font, Vector2(0.0, VIEW_H * 0.5), "EMBER ENGINE", HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 36, Color(1.0, 1.0, 1.0, a))
 
 
 func _unhandled_input(ev: InputEvent) -> void:

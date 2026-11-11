@@ -4,6 +4,22 @@ extends Node
 # Cada chave tem português (pt) e inglês (en).
 
 const TABELA := {
+	"menu_online": {"pt": "Online", "en": "Online"},
+	"menu_local": {"pt": "Local", "en": "Local"},
+	"menu_historia": {"pt": "História", "en": "Story"},
+	"menu_editar": {"pt": "Editar", "en": "Edit"},
+	"menu_colecionaveis": {"pt": "Colecionáveis", "en": "Collectibles"},
+	"sub_versus": {"pt": "Versus", "en": "Versus"},
+	"sub_criar_personagem": {"pt": "Criar personagem", "en": "Create character"},
+	"sub_editar_personagem": {"pt": "Editar personagem", "en": "Edit character"},
+	"musica_tocando": {"pt": "Tocando", "en": "Now playing"},
+	"musica_mutar": {"pt": "Mutar", "en": "Mute"},
+	"musica_ativar": {"pt": "Ativar som", "en": "Unmute"},
+	"aviso_titulo": {"pt": "AVISO", "en": "NOTICE"},
+	"aviso_corpo": {
+		"pt": "Este jogo é um projeto de fã, feito sem fins lucrativos.\n\nO criador do jogo não é dono dos personagens, músicas, nomes e demais obras que possam aparecer aqui, e não possui os direitos sobre eles. Todos os direitos pertencem aos seus respectivos titulares, e nenhuma ligação ou apoio deles é afirmado.\n\nAs artes geradas com inteligência artificial usadas neste jogo também não são de propriedade do criador.\n\nA Ember Engine é apenas uma engine (motor) para criar jogos de luta. Ela não contém nem distribui personagens, músicas ou artes de terceiros: tudo o que aparece no jogo foi adicionado por quem o criou.\n\nSe você é titular de algum direito e deseja a remoção de um conteúdo, fale com o criador do jogo.",
+		"en": "This game is a fan project, made without profit.\n\nThe game's creator does not own the characters, music, names or other works that may appear here, and does not hold the rights to them. All rights belong to their respective owners, and no connection or endorsement from them is claimed.\n\nThe AI-generated artwork used in this game is also not owned by the creator.\n\nEmber Engine is only an engine for making fighting games. It does not contain or distribute third-party characters, music or art: everything shown in the game was added by whoever made it.\n\nIf you own a right and want some content removed, please contact the game's creator."
+	},
 	"aba_multiplayer": {"pt": "Multiplayer", "en": "Multiplayer"},
 	"aba_local": {"pt": "Local", "en": "Local"},
 	"aba_personagem": {"pt": "Personagem", "en": "Character"},

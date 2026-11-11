@@ -2,11 +2,11 @@
 
 # Ember (engine de jogos de luta)
 
-Duas partes separadas: **engine** (`engine/`: combate, menus, editor) e **Conteúdo próprio** (`ui/`, `musica/`, `sons/`, `personagens/`).
+Duas partes separadas: **engine** (`engine/`: combate, menus, editor) e **seu jogo** (`ui/`, `musica/`, `sons/`, `personagens/`).
 Veja `ui/LEIA-ME.md` e `sons/interface/LEIA-ME.md` para saber onde colocar cada arte, música e som.
 
 ## Fluxo
-Abertura (logo) > Título (toque/start) > Menu > **Seleção de personagens** > Luta. Todo modo que leva a uma luta passa pela seleção.
+Abertura (Ember Engine) > Título + aviso (toque/start) > Menu > **Seleção de personagens** > Luta. Todo modo que leva a uma luta passa pela seleção.
 
 ## Combate (resumo)
 - **Just defense (parry):** apertar para trás nos 5 frames antes do golpe encostar. Sem dano e sem gastar a barra de defesa. Segurar para trás é defesa normal.
