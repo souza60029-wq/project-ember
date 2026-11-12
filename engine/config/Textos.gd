@@ -39,7 +39,7 @@ const TABELA := {
 	"mapa_restaurar": {"pt": "Restaurar padrão", "en": "Restore defaults"},
 	"mapa_titulo_p1": {"pt": "Controle do Jogador 1", "en": "Player 1 controller"},
 	"mapa_titulo_p2": {"pt": "Controle do Jogador 2", "en": "Player 2 controller"},
-	"mapa_dica": {"pt": "Desça até o botão e use esquerda/direita para trocar a função.", "en": "Go to a button and use left/right to change its function."},
+	"mapa_dica": {"pt": "Aperte A no botão (aura amarela) e então use esquerda/direita para trocar a função.", "en": "Press A on a button (yellow aura), then use left/right to change its function."},
 	"mapa_p2_aviso": {"pt": "O Jogador 2 só muda com o segundo controle.", "en": "Player 2 can only be changed with the second controller."},
 	"mapa_p2_sem": {"pt": "Conecte um segundo controle para editar o Jogador 2.", "en": "Connect a second controller to edit Player 2."},
 	"fn_LP": {"pt": "Soco Fraco", "en": "Low Punch"},

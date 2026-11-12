@@ -41,7 +41,7 @@ func _config() -> Variant:
 
 
 func _ready() -> void:
-	layer = 100
+	layer = 128
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_painel = Control.new()
 	_painel.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -73,7 +73,9 @@ func _process(delta: float) -> void:
 	if _tempo >= INTERVALO:
 		_tempo = 0.0
 		_coletar()
-		_painel.queue_redraw()
+		visible = str(_config().hud_modo) != "desligado"
+		_painel.position = _limitar(_painel.position)
+	_painel.queue_redraw()
 
 
 # ---------- Coleta ----------

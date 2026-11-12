@@ -28,6 +28,7 @@ const COR_SUAVE := Color(0.62, 0.65, 0.8)
 var _cat: int = 0
 var _col: int = 0 # 0 = categorias, 1 = opções
 var _linha: int = 0
+var _editando: bool = false # aura amarela: só então esquerda/direita trocam a função
 var _sub: int = 0 # 0 = lista; 1 e 2 = mapa de botões do jogador 1 / 2
 var _eixo_estado := {}
 var _msg: String = ""
@@ -119,7 +120,7 @@ func _mudar(d: int, dev: int) -> void:
 	var cfg: Variant = _config()
 	var id: String = str(it["id"])
 	if id.begins_with("b:"):
-		if not _pode_editar_mapa(dev):
+		if not _editando or not _pode_editar_mapa(dev):
 			return
 		var botao: String = id.substr(2)
 		var atual: String = str((cfg.mapa(_sub) as Dictionary).get(botao, ""))
@@ -148,8 +149,15 @@ func _acionar(dev: int) -> void:
 		return
 	var it: Dictionary = l[clampi(_linha, 0, l.size() - 1)]
 	match str(it["tipo"]):
-		"escolha", "mapa":
+		"escolha":
 			_mudar(1, dev)
+		"mapa":
+			# Clicar liga/desliga a aura amarela. Só com a aura dá para trocar a função.
+			if _editando:
+				_editando = false
+			elif _pode_editar_mapa(dev):
+				_editando = true
+				_som("menu_confirma")
 		"acao":
 			match str(it["id"]):
 				"mapa1":
@@ -168,7 +176,9 @@ func _acionar(dev: int) -> void:
 
 func _voltar() -> void:
 	_som("menu_voltar")
-	if _sub > 0:
+	if _editando:
+		_editando = false
+	elif _sub > 0:
 		_linha = 2 if _sub == 1 else 3
 		_sub = 0
 	elif _col == 1:
@@ -179,6 +189,8 @@ func _voltar() -> void:
 
 
 func _mover(d: int) -> void:
+	if _editando:
+		return
 	if _col == 0 and _sub == 0:
 		var novo: int = clampi(_cat + d, 0, CATS.size() - 1)
 		if novo != _cat:
@@ -249,10 +261,10 @@ func _botao(b: int, dev: int) -> void:
 			if _col == 0 and _sub == 0:
 				_col = 1
 				_linha = 0
-			else:
+			elif _sub == 0 or _editando:
 				_mudar(1, dev)
 		JOY_BUTTON_DPAD_LEFT:
-			if _col == 1 or _sub > 0:
+			if (_col == 1 and _sub == 0) or _editando:
 				_mudar(-1, dev)
 		JOY_BUTTON_A:
 			if _col == 0 and _sub == 0:
@@ -271,8 +283,13 @@ func _botao(b: int, dev: int) -> void:
 				_mover(1)
 
 
+func _alt_linha() -> float:
+	return 36.0 if _sub > 0 else ALT_LINHA
+
+
 func _rect_linha(j: int) -> Rect2:
-	return Rect2(R_PAINEL.position.x + 12.0, R_PAINEL.position.y + 56.0 + float(j) * ALT_LINHA, R_PAINEL.size.x - 24.0, ALT_LINHA - 6.0)
+	var alt: float = _alt_linha()
+	return Rect2(R_PAINEL.position.x + 12.0, R_PAINEL.position.y + 52.0 + float(j) * alt, R_PAINEL.size.x - 24.0, alt - 4.0)
 
 
 func _tocar(p: Vector2) -> void:
@@ -285,16 +302,32 @@ func _tocar(p: Vector2) -> void:
 				_cat = i
 				_col = 0
 				_linha = 0
+				_editando = false
 				_som("menu_mover")
 				return
 	var n: int = _linhas().size()
 	for j in range(n):
 		var r: Rect2 = _rect_linha(j)
 		if r.has_point(p):
+			var it: Dictionary = _linhas()[j]
+			if str(it["tipo"]) == "mapa":
+				if _editando and _linha == j:
+					var m: float = r.end.x - 174.0
+					if p.x >= r.end.x - 330.0 and p.x < m:
+						_mudar(-1, -1)
+					elif p.x >= m:
+						_mudar(1, -1)
+					else:
+						_editando = false
+				else:
+					_col = 1
+					_linha = j
+					_editando = false
+					_acionar(-1)
+				return
 			_col = 1
 			_linha = j
-			var it: Dictionary = _linhas()[j]
-			if str(it["tipo"]) == "escolha" or str(it["tipo"]) == "mapa":
+			if str(it["tipo"]) == "escolha":
 				# Metade esquerda do valor volta, o resto avança.
 				var meio: float = r.end.x - 170.0
 				_mudar(-1 if (p.x > r.end.x - 330.0 and p.x < meio) else 1, -1)
@@ -359,8 +392,13 @@ func _painel() -> void:
 		var it: Dictionary = l[j]
 		var r: Rect2 = _rect_linha(j)
 		var foco: bool = _col == 1 and j == _linha
+		var aura: bool = foco and _editando and str(it["tipo"]) == "mapa"
 		draw_rect(r, Color(0.14, 0.12, 0.1) if foco else Color(1, 1, 1, 0.03 if j % 2 == 0 else 0.0))
-		if foco:
+		if aura:
+			var pulso: float = 0.55 + 0.35 * sin(Time.get_ticks_msec() / 140.0)
+			draw_rect(r.grow(5.0), Color(1.0, 0.9, 0.15, 0.22 * pulso))
+			draw_rect(r.grow(2.0), Color(1.0, 0.9, 0.15, pulso + 0.2), false, 3.0)
+		elif foco:
 			draw_rect(r, COR_DESTAQUE, false, 2.0)
 		var cy: float = r.position.y + r.size.y * 0.5
 		var tipo: String = str(it["tipo"])
@@ -370,7 +408,7 @@ func _painel() -> void:
 		else:
 			draw_string(fonte, Vector2(r.position.x + 18.0, cy + 7.0), str(it["rotulo"]), HORIZONTAL_ALIGNMENT_LEFT, r.size.x * 0.5, 18, COR_TEXTO)
 		if tipo == "escolha" or tipo == "mapa":
-			_seletor(r, cy, str(it["valor"]), foco)
+			_seletor(r, cy, str(it["valor"]), foco and (aura or tipo == "escolha"))
 		elif tipo == "info":
 			draw_string(fonte, Vector2(r.end.x - 330.0, cy + 7.0), str(it["valor"]), HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 16, COR_SUAVE)
 		elif tipo == "acao":

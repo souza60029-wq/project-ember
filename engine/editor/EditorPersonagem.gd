@@ -1072,11 +1072,11 @@ func _escolher_imagens(depois: Callable) -> void:
 
 
 func _escolher_som(depois: Callable) -> void:
-	_abrir_dialogo("Escolher som", PackedStringArray(["*.ogg, *.wav, *.mp3 ; Sons"]), depois)
+	_abrir_dialogo("Escolher som", PackedStringArray(["*.ogg, *.wav, *.mp3 ; Sons"]), depois, false)
 
 # Usa o seletor de arquivos do sistema (iOS, Android, desktop) quando o Godot tem esse recurso
 # (Godot 4.3 ou mais novo); no 4.2 cai no seletor do próprio Godot, também com seleção múltipla.
-func _abrir_dialogo(titulo: String, filtros: PackedStringArray, depois: Callable, varios: bool) -> void:
+func _abrir_dialogo(titulo: String, filtros: PackedStringArray, depois: Callable, varios: bool = false) -> void:
 	_fd_acao = depois
 	_fd_varios = varios
 	_fd.title = titulo
