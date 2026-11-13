@@ -60,14 +60,28 @@ func _ready() -> void:
 	_botao.pressionado.connect(ir_para_menu)
 	add_child(_botao)
 
-	# HUD do sistema por cima de tudo (Configurações > Tela).
-	add_child(preload("res://engine/sistema/HudSistema.gd").new())
-
 	# Começa preto e revela.
 	_tween = create_tween()
 	_tween.tween_interval(0.2)
 	_tween.tween_property(_cobertura, "modulate:a", 0.0, FADE_INICIAL)
 	_tween.tween_callback(_liberar)
+
+	# O HUD do sistema (Configurações > Tela) é carregado depois e nunca atrapalha a abertura do app.
+	_criar_hud.call_deferred()
+	# Segurança: se a tela continuar preta sem nenhuma troca em andamento, libera.
+	get_tree().create_timer(4.0).timeout.connect(_seguranca)
+
+
+func _criar_hud() -> void:
+	var scr = load("res://engine/sistema/HudSistema.gd")
+	if scr != null and scr.can_instantiate():
+		add_child(scr.new())
+
+
+func _seguranca() -> void:
+	if _cobertura.modulate.a > 0.5 and (_tween == null or not _tween.is_running()):
+		_cobertura.modulate.a = 0.0
+		_liberar()
 
 
 func ir_para_luta() -> void:
@@ -99,7 +113,9 @@ func _ir(caminho: String, em_luta: bool) -> void:
 func _trocar(caminho: String, em_luta: bool) -> void:
 	Config.em_luta = em_luta
 	_botao.visible = em_luta
-	get_tree().change_scene_to_file(caminho)
+	var erro: int = get_tree().change_scene_to_file(caminho)
+	if erro != OK:
+		push_error("Ember: não consegui abrir a cena " + caminho)
 	_tween = create_tween()
 	_tween.tween_interval(0.05)
 	_tween.tween_property(_cobertura, "modulate:a", 0.0, FADE_ENTRADA)

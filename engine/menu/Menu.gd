@@ -43,12 +43,21 @@ const BOLHA_W := 340.0
 
 # Fundo do menu em 4 camadas (PNGs transparentes do tamanho da tela, em ui/menu/):
 #   camada1_fundo      fundo da tela inicial
+#   camada2_grade      grade PARADA por cima do fundo (mesmo tamanho e mesmo zoom do fundo)
 #   camada2_movimento  algo que se move (rola na horizontal; pode ter sprites)
 #   personagem_<menu>  arte do personagem (troca a cada menu: online, local, historia, editar, colecionaveis)
-#   camada4_borda      borda por cima de tudo
-# Cada camada aceita UM arquivo (nome.png) ou SPRITES em sequência (nome_1.png, nome_2.png...),
-# que tocam em loop a CAMADAS_FPS. Sem as camadas, usa o fundo antigo fundo_<menu>.png.
+#   camada4_borda_topo / camada4_borda_baixo   bordas por cima de tudo (a do topo e a de baixo)
+# Cada camada aceita UM PNG (parada) ou uma ANIMAÇÃO em sequência (nome_1.png, nome_2.png...), que é
+# o que o GIF vira (ferramentas/gif_para_frames.py ou a ação do GitHub convertem .gif sozinhos).
+# O arquivo nome.anim.json guarda a duração de cada quadro; sem ele, usa CAMADAS_FPS.
+#   - fundo: animado em loop (se for PNG, fica parado)
+#   - bordas: só se movem quando a pessoa troca de menu (se forem PNG, ficam paradas)
+# Sem as camadas, usa o fundo antigo fundo_<menu>.png (e camada4_borda, a borda única de tela inteira).
 const CAMADAS_FPS := 12.0
+# Fundo e grade usam sempre o MESMO retângulo, então ganham o mesmo zoom em telas de outro formato.
+# "cobrir": preenche a tela inteira (pode cortar um pouco); "caber": mostra tudo (pode sobrar borda).
+const FUNDO_AJUSTE := "cobrir"
+const MAX_QUADROS_CAMADA := 240
 const CAMADA_MOV_VEL := 40.0
 const TROCA_ARTE_SEG := 0.35
 const TROCA_ARTE_DESLOCA := 80.0
@@ -130,6 +139,9 @@ var _bolha_w: float = 0.0
 var _nome_faixa: String = ""
 var _giro: float = 0.0
 var _camadas: Dictionary = {}
+var _duracoes: Dictionary = {}
+var _borda_tocando: bool = false
+var _borda_t: float = 0.0
 var _arte_ant: int = -1
 var _arte_dir: int = 1
 var _arte_t: float = 1.0
@@ -186,6 +198,12 @@ func _process(delta: float) -> void:
 		if aviso_t == 0:
 			aviso = ""
 	_arte_t = minf(1.0, _arte_t + delta / TROCA_ARTE_SEG)
+	if _borda_tocando:
+		_borda_t += delta
+		var fim: float = maxf(_total_camada("camada4_borda_topo"), maxf(_total_camada("camada4_borda_baixo"), _total_camada("camada4_borda")))
+		if _borda_t >= fim:
+			_borda_tocando = false
+			_borda_t = 0.0
 	_animar_disco(delta)
 	queue_redraw()
 
@@ -204,7 +222,7 @@ func _frames_camada(nome: String) -> Array:
 	if unico != null:
 		r.append(unico)
 	else:
-		for i in range(1, 65):
+		for i in range(1, MAX_QUADROS_CAMADA + 1):
 			var t: Texture2D = _textura("%s_%d" % [nome, i])
 			if t == null:
 				break
@@ -212,11 +230,65 @@ func _frames_camada(nome: String) -> Array:
 	_camadas[nome] = r
 	return r
 
-func _quadro_camada(nome: String) -> Texture2D:
+# Duração de cada quadro (segundos), de nome.anim.json ({"duracoes_ms": [...]}); sem ele, CAMADAS_FPS.
+func _duracoes_camada(nome: String) -> Array:
+	if _duracoes.has(nome):
+		return _duracoes[nome]
+	var n: int = _frames_camada(nome).size()
+	var r: Array = []
+	var dados: Variant = null
+	var caminho: String = PASTA_MENU + nome + ".anim.json"
+	if ResourceLoader.exists(caminho):
+		var j: Variant = load(caminho)
+		if j is JSON:
+			dados = j.data
+	if typeof(dados) == TYPE_DICTIONARY and dados.has("duracoes_ms") and typeof(dados["duracoes_ms"]) == TYPE_ARRAY and (dados["duracoes_ms"] as Array).size() == n:
+		for d in dados["duracoes_ms"]:
+			r.append(maxf(0.02, float(d) / 1000.0))
+	else:
+		for i in range(n):
+			r.append(1.0 / CAMADAS_FPS)
+	_duracoes[nome] = r
+	return r
+
+# Duração de uma volta completa da animação (0 se a camada não existe ou é um PNG só).
+func _total_camada(nome: String) -> float:
+	if _frames_camada(nome).size() <= 1:
+		return 0.0
+	var t: float = 0.0
+	for d in _duracoes_camada(nome):
+		t += float(d)
+	return t
+
+# Quadro da camada no instante "t" (em loop). PNG único: sempre o mesmo.
+func _quadro_em(nome: String, t: float) -> Texture2D:
 	var f: Array = _frames_camada(nome)
 	if f.is_empty():
 		return null
-	return f[int(_tempo * CAMADAS_FPS) % f.size()]
+	if f.size() == 1:
+		return f[0]
+	var total: float = _total_camada(nome)
+	var x: float = fposmod(t, total) if total > 0.0 else 0.0
+	var d: Array = _duracoes_camada(nome)
+	var acum: float = 0.0
+	for i in range(f.size()):
+		acum += float(d[i])
+		if x < acum:
+			return f[i]
+	return f[f.size() - 1]
+
+func _quadro_camada(nome: String) -> Texture2D:
+	return _quadro_em(nome, _tempo)
+
+# Borda: parada no primeiro quadro; só anima enquanto a pessoa troca de menu.
+func _desenhar_borda(nome: String, topo: bool) -> bool:
+	var t: Texture2D = _quadro_em(nome, _borda_t if _borda_tocando else 0.0)
+	if t == null:
+		return false
+	var ts: Vector2 = t.get_size()
+	var h: float = VIEW_W * ts.y / maxf(ts.x, 1.0)
+	draw_texture_rect(t, Rect2(0.0, 0.0 if topo else VIEW_H - h, VIEW_W, h), false)
+	return true
 
 func _desenhar_camada(nome: String, desloca: Vector2 = Vector2.ZERO, alfa: float = 1.0) -> bool:
 	var t: Texture2D = _quadro_camada(nome)
@@ -228,14 +300,30 @@ func _desenhar_camada(nome: String, desloca: Vector2 = Vector2.ZERO, alfa: float
 func _nome_arte(i: int) -> String:
 	return "personagem_" + str(ABAS[i]["icone"])
 
+# Retângulo do fundo: mantém a proporção do fundo e se ajusta à tela (centralizado).
+func _rect_fundo(tex: Texture2D) -> Rect2:
+	var tela: Vector2 = size if size.x > 0.0 and size.y > 0.0 else Vector2(VIEW_W, VIEW_H)
+	var ts: Vector2 = tex.get_size()
+	var e: float = maxf(tela.x / ts.x, tela.y / ts.y) if FUNDO_AJUSTE == "cobrir" else minf(tela.x / ts.x, tela.y / ts.y)
+	var w: Vector2 = ts * e
+	return Rect2((tela - w) * 0.5, w)
+
 func _desenhar_camadas() -> void:
-	# 1. fundo (sem ele, usa o fundo antigo do menu ou a cor)
-	if not _desenhar_camada("camada1_fundo"):
+	# 1. fundo (sem ele, usa o fundo antigo do menu ou a cor) e 2. grade parada, no mesmo retângulo
+	var rf := Rect2(0.0, 0.0, VIEW_W, VIEW_H)
+	var fundo: Texture2D = _quadro_camada("camada1_fundo")
+	if fundo != null:
+		rf = _rect_fundo(fundo)
+		draw_texture_rect(fundo, rf, false)
+	else:
 		var antigo: Texture2D = _textura(str(ABAS[aba]["fundo"]))
 		if antigo != null:
-			draw_texture_rect(antigo, Rect2(0.0, 0.0, VIEW_W, VIEW_H), false)
+			draw_texture_rect(antigo, rf, false)
 		else:
-			draw_rect(Rect2(0.0, 0.0, VIEW_W, VIEW_H), CORES[aba])
+			draw_rect(rf, CORES[aba])
+	var grade: Texture2D = _quadro_camada("camada2_grade")
+	if grade != null:
+		draw_texture_rect(grade, rf, false)
 	# 2. movimento: rola na horizontal, repetindo
 	var mov: Texture2D = _quadro_camada("camada2_movimento")
 	if mov != null:
@@ -249,8 +337,11 @@ func _desenhar_camadas() -> void:
 		_desenhar_camada(_nome_arte(aba), Vector2(float(_arte_dir) * TROCA_ARTE_DESLOCA * (1.0 - e), 0.0), e)
 	else:
 		_desenhar_camada(_nome_arte(aba))
-	# 4. borda
-	_desenhar_camada("camada4_borda")
+	# 4. bordas: uma no topo e outra embaixo (sem elas, usa a borda única de tela inteira)
+	var b1: bool = _desenhar_borda("camada4_borda_topo", true)
+	var b2: bool = _desenhar_borda("camada4_borda_baixo", false)
+	if not b1 and not b2:
+		_desenhar_camada("camada4_borda")
 
 func _draw() -> void:
 	_desenhar_camadas()
@@ -799,6 +890,8 @@ func _selecionar_aba(i: int) -> void:
 		_arte_ant = aba
 		_arte_dir = 1 if i > aba else -1
 		_arte_t = 0.0
+		_borda_tocando = true
+		_borda_t = 0.0
 		aba = i
 		sub = 0
 		_som("menu_mover")
