@@ -13,6 +13,9 @@ const PASTAS_PERSONAGEM := ["res://personagens/", "user://personagens/"]
 const EXTENSOES := ["ogg", "mp3", "wav"]
 signal faixa_mudou(nome: String)
 
+# Faixas do sistema que não entram no sorteio da luta.
+const RESERVADAS := ["titulo", "selecao"]
+const PASTA_MUSICA_USUARIO := "user://musica/"
 const CANAIS := 8
 const FADE_MUSICA := 0.5
 const VOLUME_MUDO := -60.0
@@ -88,16 +91,27 @@ func tocar_musica_personagem(personagem_id: String) -> bool:
 
 # Toca uma música sorteada de musica/<pasta>/ e sorteia outra quando ela acaba.
 # Sem arquivos na pasta, toca musica/<reserva>.
+# Toca uma música sorteada de musica/<pasta>/ (e de user://musica/<pasta>/) e sorteia outra
+# quando ela acaba. Sem arquivos: toca musica/<reserva> ou, sem reserva, para a música.
 func tocar_aleatoria(pasta: String, reserva: String = "") -> void:
-	if not _listar_musicas(PASTA_MUSICA + pasta + "/").is_empty():
+	if not _arquivos_da_lista(pasta).is_empty():
 		_lista_atual = pasta
 		_proxima_da_lista()
 	elif reserva != "":
 		tocar_musica(reserva, true)
+	else:
+		_lista_atual = ""
+		parar_musica()
+
+
+# Música de luta: toca todas as faixas (musica/, musica/menu/, musica/luta/).
+# Faixas reservadas do sistema (titulo, selecao) ficam de fora.
+func tocar_luta() -> void:
+	tocar_aleatoria("#luta")
 
 
 func _proxima_da_lista() -> void:
-	var arquivos: Array = _listar_musicas(PASTA_MUSICA + _lista_atual + "/")
+	var arquivos: Array = _arquivos_da_lista(_lista_atual)
 	if arquivos.is_empty():
 		return
 	var escolha: String = str(arquivos[randi() % arquivos.size()])
@@ -108,20 +122,37 @@ func _proxima_da_lista() -> void:
 	_tocar_arquivo(escolha, false)
 
 
+# Faixas de uma lista. "#luta" = raiz de musica/ + menu/ + luta/; outro nome = a pasta musica/<nome>/.
+# Também lê user://musica/ (pasta do app no aparelho) com a mesma estrutura.
+func _arquivos_da_lista(nome: String) -> Array:
+	var r: Array = []
+	for base in [PASTA_MUSICA, PASTA_MUSICA_USUARIO]:
+		if nome == "#luta":
+			r.append_array(_listar_musicas(str(base), true))
+			r.append_array(_listar_musicas(str(base) + "menu/"))
+			r.append_array(_listar_musicas(str(base) + "luta/"))
+		else:
+			r.append_array(_listar_musicas(str(base) + nome + "/"))
+	return r
+
+
 func _ao_terminar(p: AudioStreamPlayer) -> void:
 	if p == _musicas[_ativa] and _lista_atual != "":
 		_proxima_da_lista()
 
 
-func _listar_musicas(pasta: String) -> Array:
+func _listar_musicas(pasta: String, sem_reservadas: bool = false) -> Array:
 	var r: Array = []
 	var dir := DirAccess.open(pasta)
 	if dir == null:
 		return r
 	for f in dir.get_files():
 		var nome: String = str(f).trim_suffix(".import").trim_suffix(".remap")
-		if EXTENSOES.has(nome.get_extension().to_lower()) and not r.has(pasta + nome):
-			r.append(pasta + nome)
+		if not EXTENSOES.has(nome.get_extension().to_lower()) or r.has(pasta + nome):
+			continue
+		if sem_reservadas and RESERVADAS.has(nome.get_basename().to_lower()):
+			continue
+		r.append(pasta + nome)
 	return r
 
 

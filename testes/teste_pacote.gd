@@ -92,6 +92,9 @@ func _testar_compilacao() -> void:
 		"res://engine/config/Config.gd",
 		"res://engine/config/Configuracoes.gd",
 		"res://engine/sistema/HudSistema.gd",
+		"res://engine/editor/EditorBlocos.gd",
+		"res://engine/editor/NavegadorArquivos.gd",
+		"res://engine/editor/EditorPersonagem.gd",
 		"res://engine/luta/Luta.gd",
 	]:
 		_checar("compila " + caminho.get_file(), load(caminho) != null)

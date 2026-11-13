@@ -1,12 +1,14 @@
 extends Control
 
-# Criador de personagens (layout do mockup): cabeçalho, barra de nome, painel Informações,
-# área de visualização, timeline de sprites do golpe (ou da animação) em edição,
-# Adicionar Golpe, Lista de Golpes (com prioridade) e Adicionar Som.
-# Golpes fixos (LP, LK, HP, HK, BO): só sprites, sprite de impacto e som. Os frames são fixos;
-# o motor reparte os sprites pelos frames a 60 FPS. Os criados por você são totalmente editáveis.
-# PRIORIDADE: o motor testa os golpes de cima para baixo e usa o primeiro que combina
-# (botão + carga + ar + custo). A ordem da lista é a prioridade.
+# Criador de personagens (celular, paisagem):
+#   topo: nome do personagem (centralizado)
+#   meio: [Adicionar animação / Adicionar golpe] [retângulo com o sprite] [Lista de golpes / Blocos]
+#   baixo: timeline de sprites (+ quadrado de "som no sprite") e os botões Salvar, Voltar, Impacto, Remover, Testar, Mais.
+# Cada golpe tem a própria timeline. O som é marcado num sprite e toca quando ele aparece
+# (pode haver vários sons no mesmo golpe). Etiqueta de nota nos sprites que têm som.
+# Golpes fixos (LP, LK, HP, HK, BO): só sprites e sons. O comportamento do golpe (tempo, dano, alcance,
+# movimento, magia, encadeamento...) é feito com BLOCOS (EditorBlocos.gd).
+# PRIORIDADE: o motor testa os golpes de cima para baixo e usa o primeiro que combina.
 # Entrada: Menu.modo_editor = "criar" (novo) ou "editar" (lista de personagens).
 # Autoloads são acessados por get_node (não pelo nome), para o script compilar sem eles.
 
@@ -17,6 +19,8 @@ const Medidas = preload("res://engine/formato/Medidas.gd")
 const Eventos = preload("res://engine/sons/Eventos.gd")
 const Sprites = preload("res://engine/nucleo/Sprites.gd")
 const Menu = preload("res://engine/menu/Menu.gd")
+const Navegador = preload("res://engine/editor/NavegadorArquivos.gd")
+const EditorBlocos = preload("res://engine/editor/EditorBlocos.gd")
 
 const PASTA_USUARIO := "user://personagens/"
 const COR_FUNDO := Color(0.05, 0.04, 0.12)
@@ -24,46 +28,29 @@ const COR_PAINEL := Color(0.08, 0.07, 0.18)
 const COR_BORDA := Color(0.55, 0.40, 0.95)
 const COR_TEXTO := Color(0.92, 0.9, 1.0)
 const COR_SUAVE := Color(0.7, 0.65, 0.9)
-const ALTURA_BOTAO: float = 40.0
+const ALTURA_BOTAO: float = 48.0
+const FONTE_BOTAO: int = 20
 const EXT_IMAGEM := ["png", "webp", "jpg", "jpeg"]
 const EXT_SOM := ["ogg", "wav", "mp3"]
 
 # Posições (tela de 960x540)
-const R_INFO := Rect2(14.0, 80.0, 262.0, 190.0)
-const R_GOLPE := Rect2(14.0, 278.0, 262.0, 54.0)
-const R_PREVIA := Rect2(290.0, 80.0, 656.0, 252.0)
-const R_LINHA := Rect2(290.0, 392.0, 568.0, 104.0)
-const THUMB := Vector2(88.0, 78.0)
-const THUMB_SEL := Vector2(106.0, 94.0)
-
-# c = caminho no golpe ("dano" ou "hitbox.x"), r = rótulo, p = passo, min/max, int = inteiro
-const NUMERICOS := [
-	{"c": "startup", "r": "Startup", "p": 1.0, "min": 0.0, "max": 99.0, "int": true},
-	{"c": "active", "r": "Active", "p": 1.0, "min": 1.0, "max": 99.0, "int": true},
-	{"c": "recovery", "r": "Recovery", "p": 1.0, "min": 0.0, "max": 199.0, "int": true},
-	{"c": "forca", "r": "Forca (1-3)", "p": 1.0, "min": 1.0, "max": 3.0, "int": true},
-	{"c": "dano", "r": "Dano", "p": 10.0, "min": 0.0, "max": 999.0, "int": true},
-	{"c": "custo", "r": "Custo barra", "p": 10.0, "min": 0.0, "max": 300.0, "int": true},
-	{"c": "energia_ganha", "r": "Barra ganha", "p": 10.0, "min": 0.0, "max": 300.0, "int": true},
-	{"c": "carga_seg", "r": "Carga (seg)", "p": 0.1, "min": 0.0, "max": 3.0, "int": false},
-]
-const HITBOX := [
-	{"c": "hitbox.x", "r": "Hitbox X (px)", "p": 5.0, "min": -300.0, "max": 300.0, "int": true},
-	{"c": "hitbox.y", "r": "Hitbox Y (px)", "p": 5.0, "min": -300.0, "max": 0.0, "int": true},
-	{"c": "hitbox.w", "r": "Largura (px)", "p": 5.0, "min": 1.0, "max": 300.0, "int": true},
-	{"c": "hitbox.h", "r": "Altura (px)", "p": 5.0, "min": 1.0, "max": 300.0, "int": true},
-]
-const FLAGS := [["antichao", "Anti-chao"], ["blowoff", "Blow Off"], ["so_ar", "So no ar"]]
+const R_NOME := Rect2(290.0, 12.0, 380.0, 48.0)
+const R_PREVIA := Rect2(206.0, 68.0, 548.0, 240.0)
+const R_LINHA := Rect2(14.0, 336.0, 826.0, 118.0)
+const R_SOM := Rect2(850.0, 340.0, 96.0, 110.0)
+const THUMB := Vector2(86.0, 76.0)
+const THUMB_SEL := Vector2(104.0, 90.0)
+const VISIVEIS: int = 6
 
 
-# Botão roxo com ícone desenhado à esquerda (a fonte padrão não tem ícones).
+# Botão roxo com ícone desenhado (a fonte padrão não tem ícones).
 class BotaoIcone extends Button:
 	var tipo: String = "mais"
 
 	func _init(t: String = "mais", texto_btn: String = "") -> void:
 		tipo = t
 		text = texto_btn
-		custom_minimum_size = Vector2(0, 40)
+		custom_minimum_size = Vector2(0, 48)
 
 	func _draw() -> void:
 		var cor := Color(1, 1, 1, 0.95)
@@ -76,12 +63,12 @@ class BotaoIcone extends Button:
 				var y: float = c.y - 8.0 + 8.0 * float(k)
 				draw_rect(Rect2(c.x - 10.0, y - 1.5, 4.0, 3.0), cor)
 				draw_line(Vector2(c.x - 3.0, y), Vector2(c.x + 10.0, y), cor, 3.0)
-		elif tipo == "som":
-			draw_circle(c + Vector2(-6, 8), 5.0, cor)
-			draw_line(c + Vector2(-1, 8), c + Vector2(-1, -10), cor, 3.0)
-			draw_line(c + Vector2(-1, -10), c + Vector2(9, -6), cor, 3.0)
-			draw_line(c + Vector2(8, 4), c + Vector2(16, 4), cor, 2.0)
-			draw_line(c + Vector2(12, 0), c + Vector2(12, 8), cor, 2.0)
+		elif tipo == "som_g":
+			# nota musical grande, no alto do quadrado
+			var n := Vector2(size.x * 0.5, size.y * 0.34)
+			draw_circle(n + Vector2(-8, 12), 8.0, cor)
+			draw_line(n + Vector2(-1, 12), n + Vector2(-1, -16), cor, 4.0)
+			draw_line(n + Vector2(-1, -16), n + Vector2(14, -10), cor, 4.0)
 
 
 var _p: Dictionary = {}
@@ -101,28 +88,17 @@ var _lista_personagens: VBoxContainer
 var _tela_edicao: Control
 var _campo_nome: LineEdit
 var _area: Control
-var _info: Control
 var _cartao: Control
 var _linha: Control
 var _btn_testar: Button
 var _btn_impacto: Button
 var _lbl_tempo: Label
-var _campo_golpe: LineEdit
-var _btn_botao: Button
-var _btn_carga: Button
-var _sec_custom: VBoxContainer
-var _lbl_base: Label
-var _lbl_som: Label
-var _preview: Control
-var _valores := {}
-var _specs := {}
-var _checks := {}
 var _lbl_slots := {}
 var _lbl_eventos := {}
 var _lbl_artes := {}
 var _lbl_altura: Label
 var _lista_golpes: VBoxContainer
-var _lbl_slots_box: VBoxContainer
+var _lista_sons_golpe: VBoxContainer
 var _msgs: Array[Label] = []
 var _fd: FileDialog
 var _fd_acao: Callable
@@ -164,7 +140,7 @@ func _process(_d: float) -> void:
 		_area.queue_redraw()
 
 
-# ---------- montagem da tela de edição ----------
+# ---------- montagem ----------
 
 func _nova_tela() -> MarginContainer:
 	var m := MarginContainer.new()
@@ -178,7 +154,6 @@ func _nova_tela() -> MarginContainer:
 	v.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	m.add_child(v)
 	return m
-
 
 func _montar_lista() -> void:
 	_tela_lista = _nova_tela()
@@ -205,41 +180,26 @@ func _montar_edicao() -> void:
 	_tela_edicao.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_tela_edicao)
 
-	# Cabeçalho e barra de nome.
-	var cab := Control.new()
-	cab.position = Vector2.ZERO
-	cab.size = Vector2(960.0, 76.0)
-	cab.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	cab.draw.connect(_desenhar_cabecalho.bind(cab))
-	_tela_edicao.add_child(cab)
+	# Nome do personagem: centro superior, sem encostar no topo.
 	_campo_nome = LineEdit.new()
-	_campo_nome.placeholder_text = "Meu Personagem"
-	_campo_nome.position = Vector2(560.0, 34.0)
-	_campo_nome.size = Vector2(386.0, 38.0)
+	_campo_nome.placeholder_text = "Nome do personagem"
+	_campo_nome.position = R_NOME.position
+	_campo_nome.size = R_NOME.size
 	_campo_nome.max_length = 40
+	_campo_nome.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_campo_nome.add_theme_font_size_override("font_size", 24)
 	_tela_edicao.add_child(_campo_nome)
 
-	# Painel Informações (as linhas abrem as janelas de Animações, Golpes, Sons e Artes).
-	_info = Control.new()
-	_info.position = R_INFO.position
-	_info.size = R_INFO.size
-	_info.draw.connect(_desenhar_info)
-	_info.gui_input.connect(_on_info_input)
-	_tela_edicao.add_child(_info)
-
-	# Cartão do que está sendo editado (golpe ou animação) com a prioridade.
+	# Coluna da esquerda: animação, golpe e o cartão do que está sendo editado.
+	_tela_edicao.add_child(_botao_em("Adicionar\nanimacao", "", Rect2(14.0, 68.0, 180.0, 64.0), _abrir_pop.bind("slots")))
+	_tela_edicao.add_child(_botao_em("Adicionar\ngolpe", "mais", Rect2(14.0, 140.0, 180.0, 64.0), _abrir_mais))
 	_cartao = Control.new()
-	_cartao.position = R_GOLPE.position
-	_cartao.size = R_GOLPE.size
+	_cartao.position = Vector2(14.0, 212.0)
+	_cartao.size = Vector2(180.0, 96.0)
 	_cartao.draw.connect(_desenhar_cartao)
 	_tela_edicao.add_child(_cartao)
 
-	_tela_edicao.add_child(_botao_em("Adicionar Golpe", "mais", Rect2(14.0, 340.0, 262.0, 44.0), _abrir_mais))
-	_tela_edicao.add_child(_botao_em("Propriedades do golpe", "", Rect2(14.0, 390.0, 262.0, 40.0), _abrir_props))
-	_tela_edicao.add_child(_botao_em("Salvar", "", Rect2(14.0, 440.0, 126.0, 40.0), _on_salvar))
-	_tela_edicao.add_child(_botao_em("Voltar", "", Rect2(150.0, 440.0, 126.0, 40.0), _voltar_edicao))
-
-	# Área de visualização.
+	# Retângulo deitado com o sprite selecionado.
 	_area = Control.new()
 	_area.position = R_PREVIA.position
 	_area.size = R_PREVIA.size
@@ -247,16 +207,29 @@ func _montar_edicao() -> void:
 	_area.draw.connect(_desenhar_area)
 	_tela_edicao.add_child(_area)
 
-	# Linha de botões entre a visualização e a timeline.
-	_btn_testar = _botao_em("Testar", "", Rect2(290.0, 340.0, 100.0, 40.0), _alternar_teste)
-	_tela_edicao.add_child(_btn_testar)
-	_tela_edicao.add_child(_botao_em("Caixas", "", Rect2(396.0, 340.0, 90.0, 40.0), _alternar_caixas))
-	_btn_impacto = _botao_em("Impacto", "", Rect2(492.0, 340.0, 96.0, 40.0), _alternar_impacto)
-	_tela_edicao.add_child(_btn_impacto)
-	_tela_edicao.add_child(_botao_em("Remover", "", Rect2(594.0, 340.0, 96.0, 40.0), _remover_quadro))
-	_tela_edicao.add_child(_botao_em("Lista de Golpes", "lista", Rect2(756.0, 340.0, 190.0, 40.0), _abrir_lista))
+	# Coluna da direita: lista de golpes e blocos.
+	_tela_edicao.add_child(_botao_em("Lista de\ngolpes", "lista", Rect2(766.0, 68.0, 180.0, 64.0), _abrir_lista))
+	_tela_edicao.add_child(_botao_em("Blocos\ndo golpe", "", Rect2(766.0, 140.0, 180.0, 64.0), _abrir_blocos))
+	_lbl_tempo = Label.new()
+	_lbl_tempo.position = Vector2(766.0, 212.0)
+	_lbl_tempo.size = Vector2(180.0, 96.0)
+	_lbl_tempo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_lbl_tempo.add_theme_font_size_override("font_size", 13)
+	_lbl_tempo.add_theme_color_override("font_color", COR_SUAVE)
+	_tela_edicao.add_child(_lbl_tempo)
 
-	# Timeline de sprites.
+	# Mensagens
+	var msg := Label.new()
+	msg.position = Vector2(206.0, 310.0)
+	msg.size = Vector2(548.0, 24.0)
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	msg.clip_text = true
+	msg.add_theme_font_size_override("font_size", 14)
+	msg.add_theme_color_override("font_color", Color(1.0, 0.85, 0.5))
+	_tela_edicao.add_child(msg)
+	_msgs.append(msg)
+
+	# Timeline e quadrado do som.
 	_linha = Control.new()
 	_linha.position = R_LINHA.position
 	_linha.size = R_LINHA.size
@@ -264,22 +237,18 @@ func _montar_edicao() -> void:
 	_linha.draw.connect(_desenhar_linha)
 	_linha.gui_input.connect(_on_linha_input)
 	_tela_edicao.add_child(_linha)
-	_tela_edicao.add_child(_botao_em("", "som", Rect2(870.0, 414.0, 76.0, 56.0), _som_do_golpe))
-	_lbl_tempo = Label.new()
-	_lbl_tempo.position = Vector2(290.0, 498.0)
-	_lbl_tempo.size = Vector2(656.0, 36.0)
-	_lbl_tempo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_lbl_tempo.add_theme_font_size_override("font_size", 12)
-	_lbl_tempo.add_theme_color_override("font_color", COR_SUAVE)
-	_tela_edicao.add_child(_lbl_tempo)
-	var msg := Label.new()
-	msg.position = Vector2(14.0, 488.0)
-	msg.size = Vector2(262.0, 48.0)
-	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	msg.add_theme_font_size_override("font_size", 12)
-	msg.add_theme_color_override("font_color", Color(1.0, 0.85, 0.5))
-	_tela_edicao.add_child(msg)
-	_msgs.append(msg)
+	_tela_edicao.add_child(_botao_em("\n\n\n+ som", "som_g", R_SOM, _som_do_golpe))
+
+	# Botões de baixo.
+	var nomes: Array = ["Salvar", "Voltar", "Impacto", "Remover", "Testar", "Mais"]
+	var acoes: Array = [_on_salvar, _voltar_edicao, _alternar_impacto, _remover_quadro, _alternar_teste, _abrir_extras]
+	for i in range(nomes.size()):
+		var b: Button = _botao_em(str(nomes[i]), "", Rect2(10.0 + float(i) * 158.0, 464.0, 150.0, 56.0), acoes[i])
+		_tela_edicao.add_child(b)
+		if nomes[i] == "Impacto":
+			_btn_impacto = b
+		elif nomes[i] == "Testar":
+			_btn_testar = b
 	_tela_edicao.visible = false
 
 
@@ -289,11 +258,12 @@ func _estilizar(b: Button) -> void:
 		sb.bg_color = par[1]
 		sb.border_color = COR_BORDA
 		sb.set_border_width_all(2)
-		sb.set_corner_radius_all(6)
-		sb.content_margin_left = 10.0
-		sb.content_margin_right = 10.0
+		sb.set_corner_radius_all(8)
+		sb.content_margin_left = 12.0
+		sb.content_margin_right = 12.0
 		b.add_theme_stylebox_override(str(par[0]), sb)
 	b.add_theme_color_override("font_color", COR_TEXTO)
+	b.add_theme_font_size_override("font_size", FONTE_BOTAO)
 
 
 func _botao_em(texto: String, icone: String, r: Rect2, acao: Callable) -> Button:
@@ -311,8 +281,6 @@ func _botao_em(texto: String, icone: String, r: Rect2, acao: Callable) -> Button
 	return b
 
 
-
-
 func _botao(texto: String, acao: Callable) -> Button:
 	var b := Button.new()
 	b.text = texto
@@ -327,29 +295,11 @@ func _botao(texto: String, acao: Callable) -> Button:
 func _mini(t: String, acao: Callable) -> Button:
 	var b := Button.new()
 	b.text = t
-	b.custom_minimum_size = Vector2(44, ALTURA_BOTAO)
+	b.custom_minimum_size = Vector2(56, ALTURA_BOTAO)
 	_estilizar(b)
 	b.pressed.connect(acao)
 	return b
 
-
-func _stepper(spec: Dictionary) -> HBoxContainer:
-	var caminho := str(spec["c"])
-	var linha := HBoxContainer.new()
-	linha.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var rot := Label.new()
-	rot.text = str(spec["r"])
-	rot.custom_minimum_size = Vector2(110, 0)
-	linha.add_child(rot)
-	linha.add_child(_mini("-", _ajustar.bind(caminho, -1)))
-	var val := Label.new()
-	val.custom_minimum_size = Vector2(50, 0)
-	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	linha.add_child(val)
-	linha.add_child(_mini("+", _ajustar.bind(caminho, 1)))
-	_valores[caminho] = val
-	_specs[caminho] = spec
-	return linha
 
 func _linha_botoes(botoes: Array) -> HBoxContainer:
 	var h := HBoxContainer.new()
@@ -395,8 +345,9 @@ func _novo_popup(nome: String, titulo: String, tam: Vector2i) -> VBoxContainer:
 	pop.add_child(v)
 	v.add_child(_rotulo(titulo))
 	var rol := ScrollContainer.new()
-	rol.custom_minimum_size = Vector2(float(tam.x) - 24.0, float(tam.y) - 90.0)
+	rol.custom_minimum_size = Vector2(float(tam.x) - 24.0, float(tam.y) - 100.0)
 	rol.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	rol.scroll_deadzone = 12
 	v.add_child(rol)
 	var conteudo := VBoxContainer.new()
 	conteudo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -419,12 +370,14 @@ func _montar_popups() -> void:
 	_fd = FileDialog.new()
 	_fd.access = FileDialog.ACCESS_FILESYSTEM
 	_fd.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	_fd.min_size = Vector2i(760, 420)
+	_fd.theme = _tema_grande()
 	_fd.file_selected.connect(_on_arquivo)
 	_fd.files_selected.connect(_on_arquivos)
 	add_child(_fd)
 
 	# Adicionar golpe
-	var mais: VBoxContainer = _novo_popup("mais", "Adicionar golpe", Vector2i(380, 420))
+	var mais: VBoxContainer = _novo_popup("mais", "Adicionar golpe", Vector2i(520, 520))
 	for botao in Formato.BOTOES:
 		var nome: String = str((Formato.BASE[botao] as Dictionary)["nome"])
 		mais.add_child(_botao("%s - %s (fixo)" % [botao, nome], _adicionar_base.bind(str(botao))))
@@ -432,42 +385,45 @@ func _montar_popups() -> void:
 	mais.add_child(_botao("Golpe personalizado", _novo_golpe))
 
 	# Lista de golpes (com prioridade)
-	_lista_golpes = _novo_popup("lista", "Lista de Golpes", Vector2i(700, 440))
+	_lista_golpes = _novo_popup("lista", "Lista de Golpes", Vector2i(820, 500))
 
 	# Animações (sprites por situação)
-	var an: VBoxContainer = _novo_popup("slots", "Animacoes do personagem", Vector2i(620, 440))
+	var an: VBoxContainer = _novo_popup("slots", "Animacoes do personagem", Vector2i(720, 500))
 	an.add_child(_rotulo("Escolha uma animacao para editar na timeline."))
 	for slot in Formato.SLOTS:
 		var linha := HBoxContainer.new()
 		an.add_child(linha)
 		var l := Label.new()
-		l.custom_minimum_size = Vector2(330, 0)
+		l.custom_minimum_size = Vector2(340, 0)
+		l.add_theme_font_size_override("font_size", 18)
 		linha.add_child(l)
 		_lbl_slots[slot] = l
 		linha.add_child(_botao("Editar", _editar_slot.bind(str(slot))))
 		linha.add_child(_botao("Limpar", _limpar_slot.bind(str(slot))))
 
 	# Sons por evento
-	var so: VBoxContainer = _novo_popup("sons", "Sons do personagem", Vector2i(620, 440))
-	so.add_child(_rotulo("Sons por evento. O som de cada golpe fica no botao de nota musical."))
+	var so: VBoxContainer = _novo_popup("sons", "Sons do personagem", Vector2i(720, 500))
+	so.add_child(_rotulo("Sons por evento. Sons dos golpes: botao de nota musical, no sprite."))
 	for ev in Eventos.TODOS:
 		var linha2 := HBoxContainer.new()
 		so.add_child(linha2)
 		var l2 := Label.new()
-		l2.custom_minimum_size = Vector2(300, 0)
+		l2.custom_minimum_size = Vector2(340, 0)
+		l2.add_theme_font_size_override("font_size", 18)
 		linha2.add_child(l2)
 		_lbl_eventos[ev] = l2
 		linha2.add_child(_botao("Escolher", _escolher_som.bind(_novo_som_evento.bind(str(ev)))))
 		linha2.add_child(_botao("Limpar", _limpar_som_evento.bind(str(ev))))
 
 	# Artes, medidas e backup
-	var ar: VBoxContainer = _novo_popup("artes", "Artes, medidas e backup", Vector2i(620, 440))
-	ar.add_child(_rotulo("Arte da selecao (grande) e do card (quadro da grade de selecao)"))
+	var ar: VBoxContainer = _novo_popup("artes", "Artes, medidas e backup", Vector2i(720, 500))
+	ar.add_child(_rotulo("Arte da selecao (grande) e do card (retangulo vertical da grade)"))
 	for par in [["arte_selecao", "arte/selecao."], ["arte_card", "arte/card."]]:
 		var li := HBoxContainer.new()
 		ar.add_child(li)
 		var l3 := Label.new()
-		l3.custom_minimum_size = Vector2(260, 0)
+		l3.custom_minimum_size = Vector2(300, 0)
+		l3.add_theme_font_size_override("font_size", 18)
 		li.add_child(l3)
 		_lbl_artes[str(par[0])] = l3
 		li.add_child(_botao("Escolher", _escolher_imagem.bind(_nova_arte.bind(str(par[0]), str(par[1])))))
@@ -477,67 +433,48 @@ func _montar_popups() -> void:
 	ar.add_child(la)
 	la.add_child(_mini("-", _ajustar_altura.bind(-10)))
 	_lbl_altura = Label.new()
-	_lbl_altura.custom_minimum_size = Vector2(100, 0)
+	_lbl_altura.custom_minimum_size = Vector2(110, 0)
 	_lbl_altura.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_lbl_altura.add_theme_font_size_override("font_size", 20)
 	la.add_child(_lbl_altura)
 	la.add_child(_mini("+", _ajustar_altura.bind(10)))
 	la.add_child(_botao("Medir pelo sprite parado", _medir_altura))
 	ar.add_child(_linha_botoes([_botao("Copiar backup", _copiar_backup), _botao("Colar backup", _colar_backup)]))
 
-	# Propriedades do golpe
-	var pr: VBoxContainer = _novo_popup("props", "Propriedades do golpe", Vector2i(700, 460))
-	_montar_props(pr)
+	# Mais
+	var ex: VBoxContainer = _novo_popup("extras", "Mais", Vector2i(520, 520))
+	ex.add_child(_botao("Mostrar / ocultar caixas", _alternar_caixas_e_fechar))
+	ex.add_child(_botao("Sons deste golpe", _abrir_sons_golpe))
+	ex.add_child(_botao("Animacoes", _abrir_animacoes))
+	ex.add_child(_botao("Sons do personagem", _abrir_sons_pers))
+	ex.add_child(_botao("Artes, medidas e backup", _abrir_artes))
+
+	# Sons deste golpe (por sprite)
+	_lista_sons_golpe = _novo_popup("sons_golpe", "Sons deste golpe", Vector2i(720, 460))
 
 
-func _montar_props(p: VBoxContainer) -> void:
-	_lbl_base = Label.new()
-	_lbl_base.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	p.add_child(_lbl_base)
-	_sec_custom = VBoxContainer.new()
-	p.add_child(_sec_custom)
-	var linha := HBoxContainer.new()
-	_sec_custom.add_child(linha)
-	_campo_golpe = LineEdit.new()
-	_campo_golpe.placeholder_text = "Nome do golpe"
-	_campo_golpe.custom_minimum_size = Vector2(0, ALTURA_BOTAO)
-	_campo_golpe.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_campo_golpe.text_changed.connect(_on_nome_golpe)
-	linha.add_child(_campo_golpe)
-	_btn_botao = _botao("", _ciclo_botao)
-	linha.add_child(_btn_botao)
-	_btn_carga = _botao("", _ciclo_carga)
-	linha.add_child(_btn_carga)
-	var grade := GridContainer.new()
-	grade.columns = 2
-	_sec_custom.add_child(grade)
-	for spec in NUMERICOS:
-		grade.add_child(_stepper(spec))
-	var flags := HBoxContainer.new()
-	_sec_custom.add_child(flags)
-	for f in FLAGS:
-		var cb := CheckBox.new()
-		cb.text = str(f[1])
-		cb.toggled.connect(_on_flag.bind(str(f[0])))
-		flags.add_child(cb)
-		_checks[str(f[0])] = cb
-	var hb := HBoxContainer.new()
-	_sec_custom.add_child(hb)
-	var col := VBoxContainer.new()
-	hb.add_child(col)
-	for spec in HITBOX:
-		col.add_child(_stepper(spec))
-	col.add_child(_botao("Alcance automatico (pelo sprite)", _alcance_automatico))
-	_preview = Control.new()
-	_preview.custom_minimum_size = Vector2(220, 170)
-	_preview.draw.connect(_desenhar_preview.bind(_preview))
-	hb.add_child(_preview)
-	p.add_child(_rotulo("Som do golpe (fala, grunhido...)"))
-	_lbl_som = Label.new()
-	p.add_child(_lbl_som)
-	p.add_child(_linha_botoes([_botao("Escolher som", _som_do_golpe), _botao("Limpar som", _limpar_som_golpe)]))
 
 
-# ---------- telas ----------
+func _tema_grande() -> Theme:
+	var t := Theme.new()
+	t.default_font_size = 24
+	for estado in ["normal", "hover", "pressed", "focus"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.2, 0.18, 0.4) if estado != "pressed" else Color(0.35, 0.25, 0.7)
+		sb.border_color = COR_BORDA
+		sb.set_border_width_all(2)
+		sb.set_corner_radius_all(8)
+		sb.content_margin_left = 22.0
+		sb.content_margin_right = 22.0
+		sb.content_margin_top = 16.0
+		sb.content_margin_bottom = 16.0
+		t.set_stylebox(estado, "Button", sb)
+	for tipo in ["Button", "LineEdit", "ItemList", "Tree", "OptionButton", "Label"]:
+		t.set_font_size("font_size", tipo, 24)
+	t.set_constant("v_separation", "ItemList", 16)
+	t.set_constant("v_separation", "Tree", 16)
+	return t
+
 
 func _mostrar_lista() -> void:
 	_tela_edicao.visible = false
@@ -576,7 +513,6 @@ func _abrir(p: Dictionary, pasta: String, novo: bool) -> void:
 	_mensagem("")
 	_refrescar()
 
-
 func _voltar_edicao() -> void:
 	if _veio_da_lista:
 		_mostrar_lista()
@@ -590,7 +526,6 @@ func _com_barra(s: String) -> String:
 
 func _refrescar() -> void:
 	_reconstruir_lista()
-	_atualizar_campos()
 	_atualizar_abas()
 	_atualizar_tempo()
 	_garantir_visivel()
@@ -599,7 +534,6 @@ func _refrescar() -> void:
 
 func _redesenhar() -> void:
 	_area.queue_redraw()
-	_info.queue_redraw()
 	_cartao.queue_redraw()
 	_linha.queue_redraw()
 
@@ -621,7 +555,6 @@ func _selecionar(i: int) -> void:
 	_fechar_pop("lista")
 	_refrescar()
 
-
 func _editar_slot(slot: String) -> void:
 	_alvo_slot = slot
 	_q_sel = 0
@@ -633,6 +566,7 @@ func _editar_slot(slot: String) -> void:
 
 # Golpe anterior da lista que já cobre este (mesmo botão, sem carga, sem "só no ar" e custo
 # menor ou igual): como o motor usa o primeiro que combina, este nunca seria usado. -1 = livre.
+
 func _coberto_por(i: int) -> int:
 	var golpes: Array = _p["golpes"]
 	var g: Dictionary = golpes[i]
@@ -641,7 +575,6 @@ func _coberto_por(i: int) -> int:
 		if str(o["botao"]) == str(g["botao"]) and str(o["carga"]) == "" and not bool(o["so_ar"]) and int(o["custo"]) <= int(g["custo"]):
 			return j
 	return -1
-
 
 func _reconstruir_lista() -> void:
 	_limpar(_lista_golpes)
@@ -674,7 +607,6 @@ func _reconstruir_lista() -> void:
 			av.add_theme_font_size_override("font_size", 12)
 			_lista_golpes.add_child(av)
 
-
 func _acao_linha(i: int, tipo: String) -> void:
 	_sel = i
 	_alvo_slot = ""
@@ -690,34 +622,6 @@ func _acao_linha(i: int, tipo: String) -> void:
 		"exclui":
 			_excluir_golpe()
 
-
-func _atualizar_campos() -> void:
-	var tem: bool = _sel >= 0
-	_lbl_base.visible = true
-	_sec_custom.visible = false
-	if not tem:
-		_lbl_base.text = "Nenhum golpe. Use Adicionar Golpe."
-		_lbl_som.text = ""
-		return
-	var g: Dictionary = _golpe()
-	if bool(g["base"]):
-		_lbl_base.text = "%s (%s) - golpe FIXO. Tempo: %d + %d + %d frames, dano %d. Estes numeros nao mudam (todos os personagens tem o mesmo golpe). Voce troca so os sprites (timeline) e o som." % [
-			str(g["nome"]), str(g["botao"]), int(g["startup"]), int(g["active"]), int(g["recovery"]), int(g["dano"])]
-	else:
-		_lbl_base.text = "Golpe criado por voce: tudo pode ser editado."
-		_sec_custom.visible = true
-		_campo_golpe.text = str(g["nome"])
-		_btn_botao.text = str(g["botao"])
-		_btn_carga.text = _texto_carga(str(g["carga"]))
-		for c in _valores.keys():
-			_mostrar_valor(str(c))
-		for chave in _checks.keys():
-			(_checks[chave] as CheckBox).set_pressed_no_signal(bool(g[chave]))
-	var som: String = str((g["sons"] as Dictionary)["uso"])
-	_lbl_som.text = som.get_file() if som != "" else "(sem som proprio)"
-	_preview.queue_redraw()
-
-
 func _atualizar_abas() -> void:
 	var sprites: Dictionary = _p["sprites"]
 	for slot in Formato.SLOTS:
@@ -725,11 +629,10 @@ func _atualizar_abas() -> void:
 		(_lbl_slots[slot] as Label).text = "%s: %s" % [str(Formato.ROTULOS_SLOT[slot]), ("%d sprite(s)" % n) if n > 0 else "vazio"]
 	for k in _lbl_artes.keys():
 		var rel: String = str(_p[k])
-		(_lbl_artes[k] as Label).text = "%s: %s" % ["Arte da selecao" if k == "arte_selecao" else "Arte do card", rel.get_file() if rel != "" else "vazio"]
+		(_lbl_artes[k] as Label).text = "%s: %s" % ["Arte selecao" if k == "arte_selecao" else "Arte card", rel.get_file() if rel != "" else "vazio"]
 	_lbl_altura.text = "%d px" % int(_p["altura_px"])
 	for ev in Eventos.TODOS:
 		(_lbl_eventos[ev] as Label).text = "%s: %s" % [str(ev), "ok" if _achar_som_evento(str(ev)) != "" else "vazio"]
-	_info.queue_redraw()
 
 
 func _atualizar_tempo() -> void:
@@ -742,16 +645,8 @@ func _atualizar_tempo() -> void:
 		_lbl_tempo.text = _texto_tempo(_golpe())
 	else:
 		_lbl_tempo.text = ""
-	var g_ok: bool = _alvo_slot == "" and _sel >= 0
-	_btn_impacto.disabled = not g_ok
+	_btn_impacto.disabled = not (_alvo_slot == "" and _sel >= 0)
 
-
-func _texto_carga(c: String) -> String:
-	if c == "tras":
-		return "Carga tras"
-	if c == "baixo":
-		return "Carga baixo"
-	return "Sem carga"
 
 func _achar_som_evento(ev: String) -> String:
 	for e in EXT_SOM:
@@ -759,7 +654,7 @@ func _achar_som_evento(ev: String) -> String:
 			return _pasta_midia + "sons/" + ev + "." + str(e)
 	return ""
 
-# ---------- golpes ----------
+# ---------- ações dos botões ----------
 
 func _abrir_mais() -> void:
 	_abrir_pop("mais")
@@ -770,12 +665,43 @@ func _abrir_lista() -> void:
 	_abrir_pop("lista")
 
 
-func _abrir_props() -> void:
-	if _sel < 0 or _alvo_slot != "":
-		_mensagem("Selecione um golpe (Lista de Golpes) para ver as propriedades.")
+func _abrir_extras() -> void:
+	_abrir_pop("extras")
+
+
+func _abrir_animacoes() -> void:
+	_fechar_pop("extras")
+	_abrir_pop("slots")
+
+
+func _abrir_sons_pers() -> void:
+	_fechar_pop("extras")
+	_abrir_pop("sons")
+
+
+func _abrir_artes() -> void:
+	_fechar_pop("extras")
+	_abrir_pop("artes")
+
+
+func _alternar_caixas_e_fechar() -> void:
+	_fechar_pop("extras")
+	_alternar_caixas()
+
+
+# Editor de blocos (tempo, dano, alcance, movimento, magia, encadeamento).
+func _abrir_blocos() -> void:
+	if _alvo_slot != "" or _sel < 0:
+		_mensagem("Escolha um golpe (Lista de Golpes) para editar os blocos.")
 		return
-	_atualizar_campos()
-	_abrir_pop("props")
+	var ed = EditorBlocos.new()
+	ed.fechado.connect(_ao_fechar_blocos)
+	add_child(ed)
+	ed.abrir(_golpe(), _p, _pasta_midia)
+
+
+func _ao_fechar_blocos() -> void:
+	_refrescar()
 
 
 func _adicionar_base(botao: String) -> void:
@@ -792,12 +718,10 @@ func _adicionar_base(botao: String) -> void:
 	_refrescar()
 	_mensagem("Esse golpe ja existe." if ja else "")
 
-
 func _ir_sprite_esquiva() -> void:
 	_fechar_pop("mais")
 	_editar_slot("esquiva")
 	_mensagem("Esquiva: a distancia e igual para todos. Voce coloca so os sprites.")
-
 
 func _novo_golpe() -> void:
 	_fechar_pop("mais")
@@ -809,7 +733,7 @@ func _novo_golpe() -> void:
 	_q_sel = 0
 	_t_off = 0
 	_refrescar()
-	_abrir_props()
+	_abrir_blocos()
 
 
 func _mover(direcao: int) -> void:
@@ -829,81 +753,6 @@ func _excluir_golpe() -> void:
 	_sel = mini(_sel, (_p["golpes"] as Array).size() - 1)
 	_refrescar()
 
-func _on_nome_golpe(t: String) -> void:
-	if _sel < 0 or bool(_golpe()["base"]):
-		return
-	_golpe()["nome"] = t
-	_atualizar_lista_golpes()
-
-func _ciclo_botao() -> void:
-	if _sel < 0 or bool(_golpe()["base"]):
-		return
-	var g: Dictionary = _golpe()
-	var i: int = Formato.BOTOES.find(str(g["botao"]))
-	g["botao"] = Formato.BOTOES[(i + 1) % Formato.BOTOES.size()]
-	_refrescar()
-
-func _ciclo_carga() -> void:
-	if _sel < 0 or bool(_golpe()["base"]):
-		return
-	var g: Dictionary = _golpe()
-	var i: int = Formato.CARGAS.find(str(g["carga"]))
-	g["carga"] = Formato.CARGAS[(i + 1) % Formato.CARGAS.size()]
-	_refrescar()
-
-func _on_flag(ligado: bool, chave: String) -> void:
-	if _sel < 0 or bool(_golpe()["base"]):
-		return
-	_golpe()[chave] = ligado
-	_preview.queue_redraw()
-
-func _mostrar_valor(c: String) -> void:
-	if _sel < 0:
-		return
-	var spec: Dictionary = _specs[c]
-	var v: float = float(_ler(_golpe(), c))
-	(_valores[c] as Label).text = str(int(v)) if spec["int"] else "%.1f" % v
-
-
-# c = caminho ("dano" ou "hitbox.x")
-
-func _ler(g: Dictionary, c: String) -> Variant:
-	var atual: Variant = g
-	for parte in c.split("."):
-		atual = atual[parte]
-	return atual
-
-func _gravar(g: Dictionary, c: String, valor: Variant) -> void:
-	var partes := c.split(".")
-	var atual: Dictionary = g
-	for i in partes.size() - 1:
-		atual = atual[partes[i]]
-	atual[partes[partes.size() - 1]] = valor
-
-func _ajustar(c: String, sinal: int) -> void:
-	if _sel < 0 or bool(_golpe()["base"]):
-		return
-	var spec: Dictionary = _specs[c]
-	var g: Dictionary = _golpe()
-	var v: float = float(_ler(g, c)) + sinal * float(spec["p"])
-	v = clampf(v, float(spec["min"]), float(spec["max"]))
-	_gravar(g, c, int(round(v)) if spec["int"] else snappedf(v, 0.1))
-	_mostrar_valor(c)
-	_lbl_tempo.text = _texto_tempo(g)
-	_preview.queue_redraw()
-
-func _alcance_automatico() -> void:
-	if _sel < 0 or bool(_golpe()["base"]):
-		return
-	var g: Dictionary = _golpe()
-	var h: Dictionary = Medidas.hitbox_sugerida(g, int(_p["altura_px"]), _pasta_midia)
-	if h.is_empty():
-		_mensagem("Adicione um sprite ao golpe (e salve o personagem) para medir o alcance.")
-		return
-	g["hitbox"] = h
-	_mensagem("Alcance medido pelo sprite: ajuste fino com os botoes se precisar.")
-	_atualizar_campos()
-
 # ---------- timeline (sprites do golpe ou da animação em edição) ----------
 
 func _frames_alvo() -> Array:
@@ -913,15 +762,12 @@ func _frames_alvo() -> Array:
 		return _golpe()["frames"]
 	return []
 
-
 func _alvo_editavel() -> bool:
 	return _alvo_slot != "" or _sel >= 0
-
 
 func _novos_quadros(caminhos: PackedStringArray) -> void:
 	for c in caminhos:
 		_novo_quadro(str(c))
-
 
 func _novo_quadro(origem: String) -> void:
 	if not _alvo_editavel():
@@ -941,7 +787,7 @@ func _novo_quadro(origem: String) -> void:
 		_medir_altura()
 	_refrescar()
 
-
+# Tirar um sprite também tira os sons dele e reajusta os números dos outros sprites.
 func _remover_quadro() -> void:
 	var frames: Array = _frames_alvo()
 	if frames.is_empty():
@@ -955,11 +801,19 @@ func _remover_quadro() -> void:
 			g["sprite_impacto"] = -1
 		elif imp > _q_sel:
 			g["sprite_impacto"] = imp - 1
+		var novos: Array = []
+		for s in g["sons_quadros"]:
+			var d: Dictionary = s
+			if int(d["quadro"]) == _q_sel:
+				continue
+			if int(d["quadro"]) > _q_sel:
+				d["quadro"] = int(d["quadro"]) - 1
+			novos.append(d)
+		g["sons_quadros"] = novos
 	_q_sel = clampi(_q_sel, 0, maxi(0, frames.size() - 1))
 	_refrescar()
 
 
-# Marca o sprite selecionado como o do impacto (alinha com os frames "active" do golpe).
 func _alternar_impacto() -> void:
 	if _alvo_slot != "" or _sel < 0:
 		return
@@ -969,50 +823,112 @@ func _alternar_impacto() -> void:
 	g["sprite_impacto"] = -1 if int(g["sprite_impacto"]) == _q_sel else _q_sel
 	_refrescar()
 
-
 func _alternar_teste() -> void:
 	_tocando = not _tocando
 	_anim_t = 0
 	_btn_testar.text = "Parar" if _tocando else "Testar"
 	_area.queue_redraw()
 
-
 func _alternar_caixas() -> void:
 	_mostrar_caixas = not _mostrar_caixas
 	_area.queue_redraw()
 
-
+# Som no sprite selecionado: toca quando esse sprite aparece. Pode ter vários sons no mesmo golpe.
 func _som_do_golpe() -> void:
 	if _alvo_slot != "" or _sel < 0:
-		_mensagem("Escolha um golpe para colocar o som dele. Sons de eventos: painel Informacoes > Sons.")
+		_mensagem("Escolha um golpe para colocar som. Sons de eventos: Mais > Sons do personagem.")
 		return
-	_escolher_som(_novo_som_golpe)
+	if _frames_alvo().is_empty():
+		_mensagem("Adicione um sprite ao golpe primeiro.")
+		return
+	_escolher_som(_novo_som_quadro)
+
+
+func _novo_som_quadro(origem: String) -> void:
+	if _sel < 0:
+		return
+	var quadro: int = _q_sel
+	var rel: String = _importar(origem, _nome_livre("golpes/%s_q%d" % [_slug_golpe(), quadro + 1], _ext(origem, EXT_SOM, "ogg")))
+	if rel == "":
+		return
+	var sons: Array = _golpe()["sons_quadros"]
+	if sons.size() >= Formato.MAX_SONS_QUADROS:
+		_mensagem("Limite de sons do golpe.")
+		return
+	sons.append({"quadro": quadro, "arquivo": rel})
+	_mensagem("Som no sprite #%d." % (quadro + 1))
+	_refrescar()
+
+
+func _abrir_sons_golpe() -> void:
+	_fechar_pop("extras")
+	if _alvo_slot != "" or _sel < 0:
+		_mensagem("Escolha um golpe para ver os sons dele.")
+		return
+	_reconstruir_sons_golpe()
+	_abrir_pop("sons_golpe")
+
+
+func _reconstruir_sons_golpe() -> void:
+	_limpar(_lista_sons_golpe)
+	var sons: Array = _golpe()["sons_quadros"]
+	if sons.is_empty():
+		_lista_sons_golpe.add_child(_rotulo("Nenhum som neste golpe. Selecione um sprite na timeline e toque na nota musical."))
+	for i in range(sons.size()):
+		var d: Dictionary = sons[i]
+		var linha := HBoxContainer.new()
+		_lista_sons_golpe.add_child(linha)
+		var l := Label.new()
+		l.text = "Sprite #%d: %s" % [int(d["quadro"]) + 1, str(d["arquivo"]).get_file()]
+		l.custom_minimum_size = Vector2(440, 0)
+		l.clip_text = true
+		l.add_theme_font_size_override("font_size", 18)
+		linha.add_child(l)
+		linha.add_child(_botao("Remover", _remover_som.bind(i)))
+
+
+func _remover_som(i: int) -> void:
+	var sons: Array = _golpe()["sons_quadros"]
+	if i >= 0 and i < sons.size():
+		sons.remove_at(i)
+	_reconstruir_sons_golpe()
+	_refrescar()
+
+
+# Quantos sons o golpe tem no sprite "i".
+func _sons_no_quadro(i: int) -> int:
+	if _alvo_slot != "" or _sel < 0:
+		return 0
+	var n: int = 0
+	for s in _golpe()["sons_quadros"]:
+		if int((s as Dictionary)["quadro"]) == i:
+			n += 1
+	return n
 
 
 func _garantir_visivel() -> void:
 	var n: int = _frames_alvo().size()
-	var vis: int = 5
 	_q_sel = clampi(_q_sel, 0, maxi(0, n - 1))
 	if _q_sel < _t_off:
 		_t_off = _q_sel
-	elif _q_sel > _t_off + vis - 1:
-		_t_off = _q_sel - vis + 1
-	_t_off = clampi(_t_off, 0, maxi(0, n + 1 - vis))
+	elif _q_sel > _t_off + VISIVEIS - 1:
+		_t_off = _q_sel - VISIVEIS + 1
+	_t_off = clampi(_t_off, 0, maxi(0, n + 1 - VISIVEIS))
 
 
 # Retângulos das miniaturas visíveis: [{"r": Rect2, "i": int}] (i == quantidade de sprites = botão "+").
 func _rects_linha() -> Array:
 	var r: Array = []
 	var n: int = _frames_alvo().size()
-	var x: float = 44.0
+	var x: float = 48.0
 	var i: int = _t_off
-	while i <= n and x < R_LINHA.size.x - 44.0:
+	while i <= n and i < _t_off + VISIVEIS + 1:
 		var sel: bool = i == _q_sel and i < n
 		var tam: Vector2 = THUMB_SEL if sel else THUMB
-		if x + tam.x > R_LINHA.size.x - 40.0:
+		if x + tam.x > R_LINHA.size.x - 44.0:
 			break
 		r.append({"r": Rect2(x, (R_LINHA.size.y - 20.0 - tam.y) * 0.5 + 4.0, tam.x, tam.y), "i": i})
-		x += tam.x + 8.0
+		x += tam.x + 10.0
 		i += 1
 	return r
 
@@ -1023,10 +939,10 @@ func _on_linha_input(ev: InputEvent) -> void:
 		return
 	var p: Vector2 = mb.position
 	var n: int = _frames_alvo().size()
-	if p.x < 40.0:
+	if p.x < 44.0:
 		_t_off = maxi(0, _t_off - 1)
-	elif p.x > R_LINHA.size.x - 40.0:
-		_t_off = mini(maxi(0, n + 1 - 5), _t_off + 1)
+	elif p.x > R_LINHA.size.x - 44.0:
+		_t_off = mini(maxi(0, n + 1 - VISIVEIS), _t_off + 1)
 	else:
 		for it in _rects_linha():
 			var d: Dictionary = it
@@ -1035,7 +951,7 @@ func _on_linha_input(ev: InputEvent) -> void:
 					if _alvo_editavel():
 						_escolher_imagens(_novos_quadros)
 					else:
-						_mensagem("Adicione um golpe primeiro (botao Adicionar Golpe).")
+						_mensagem("Adicione um golpe primeiro (botao Adicionar golpe).")
 				else:
 					_q_sel = int(d["i"])
 					_atualizar_tempo()
@@ -1044,53 +960,49 @@ func _on_linha_input(ev: InputEvent) -> void:
 	_linha.queue_redraw()
 
 
-func _on_info_input(ev: InputEvent) -> void:
-	var mb := ev as InputEventMouseButton
-	if mb == null or not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
-		return
-	var linha: int = int((mb.position.y - 48.0) / 30.0)
-	if mb.position.y < 48.0 or linha < 0 or linha > 3:
-		return
-	match linha:
-		0:
-			_abrir_pop("artes")
-		1:
-			_abrir_pop("slots")
-		2:
-			_abrir_lista()
-		3:
-			_abrir_pop("sons")
-
-
 func _escolher_imagem(depois: Callable) -> void:
 	_abrir_dialogo("Escolher imagem", PackedStringArray(["*.png, *.webp, *.jpg, *.jpeg ; Imagens"]), depois, false)
 
 
 # Vários sprites de uma vez (a ordem segue o nome do arquivo).
+
 func _escolher_imagens(depois: Callable) -> void:
 	_abrir_dialogo("Escolher sprites", PackedStringArray(["*.png, *.webp, *.jpg, *.jpeg ; Imagens"]), depois, true)
-
 
 func _escolher_som(depois: Callable) -> void:
 	_abrir_dialogo("Escolher som", PackedStringArray(["*.ogg, *.wav, *.mp3 ; Sons"]), depois, false)
 
 # Usa o seletor de arquivos do sistema (iOS, Android, desktop) quando o Godot tem esse recurso
 # (Godot 4.3 ou mais novo); no 4.2 cai no seletor do próprio Godot, também com seleção múltipla.
+
+# Android e desktop: explorador de arquivos do sistema (botões grandes). iOS: navegador do app,
+# que mostra as pastas do app (o iOS só deixa o app ler o que está na pasta dele).
 func _abrir_dialogo(titulo: String, filtros: PackedStringArray, depois: Callable, varios: bool = false) -> void:
 	_fd_acao = depois
 	_fd_varios = varios
+	if OS.get_name() == "iOS":
+		var exts: Array = []
+		var corpo: String = str(filtros[0]).split(";")[0]
+		for e in corpo.split(","):
+			var limpo: String = str(e).strip_edges().trim_prefix("*.").to_lower()
+			if limpo != "":
+				exts.append(limpo)
+		var nav = Navegador.new()
+		nav.escolhido.connect(_on_arquivos)
+		add_child(nav)
+		nav.abrir(titulo, exts, varios)
+		return
 	_fd.title = titulo
 	_fd.filters = filtros
 	_fd.file_mode = FileDialog.FILE_MODE_OPEN_FILES if varios else FileDialog.FILE_MODE_OPEN_FILE
 	if "use_native_dialog" in _fd:
-		_fd.set("use_native_dialog", true)
-	_fd.popup_centered_ratio(0.9)
+		_fd.set("use_native_dialog", false)
+	_fd.popup_centered_ratio(0.95)
 
 
 func _on_arquivo(caminho: String) -> void:
 	if _fd_acao.is_valid() and not _fd_varios:
 		_fd_acao.call(caminho)
-
 
 func _on_arquivos(caminhos: PackedStringArray) -> void:
 	if not _fd_acao.is_valid():
@@ -1101,7 +1013,6 @@ func _on_arquivos(caminhos: PackedStringArray) -> void:
 		_fd_acao.call(PackedStringArray(lista))
 	elif not lista.is_empty():
 		_fd_acao.call(str(lista[0]))
-
 
 func _importar(origem: String, rel: String) -> String:
 	var e: String = _salvar()
@@ -1136,25 +1047,6 @@ func _slug_golpe() -> String:
 	var g: Dictionary = _golpe()
 	return "%s_%s" % [str(g["botao"]).to_lower(), Formato.sanitizar_id(str(g["nome"]))]
 
-func _novo_som_golpe(origem: String) -> void:
-	if _sel < 0:
-		return
-	var ext: String = _ext(origem, EXT_SOM, "ogg")
-	var rel: String = _importar(origem, "golpes/%s_som.%s" % [_slug_golpe(), ext])
-	if rel == "":
-		return
-	(_golpe()["sons"] as Dictionary)["uso"] = rel
-	_atualizar_campos()
-
-func _limpar_som_golpe() -> void:
-	if _sel >= 0:
-		(_golpe()["sons"] as Dictionary)["uso"] = ""
-		_atualizar_campos()
-
-func _limpar_slot(slot: String) -> void:
-	((_p["sprites"] as Dictionary)[slot] as Array).clear()
-	_atualizar_abas()
-
 func _nova_arte(origem: String, chave: String, prefixo: String) -> void:
 	var rel: String = _importar(origem, prefixo + _ext(origem, EXT_IMAGEM, "png"))
 	if rel == "":
@@ -1175,6 +1067,10 @@ func _limpar_som_evento(ev: String) -> void:
 	var f: String = _achar_som_evento(ev)
 	if f != "" and f.begins_with("user://"):
 		DirAccess.remove_absolute(f)
+	_atualizar_abas()
+
+func _limpar_slot(slot: String) -> void:
+	((_p["sprites"] as Dictionary)[slot] as Array).clear()
 	_atualizar_abas()
 
 func _ajustar_altura(d: int) -> void:
@@ -1206,94 +1102,34 @@ func _texto_tempo(g: Dictionary) -> String:
 
 # ---------- desenho ----------
 
-func _desenhar_cabecalho(c: Control) -> void:
-	var fonte: Font = ThemeDB.fallback_font
-	var ic := Rect2(14.0, 12.0, 52.0, 52.0)
-	c.draw_rect(ic, Color(0.45, 0.3, 0.85))
-	c.draw_rect(ic, Color(0.75, 0.6, 1.0), false, 2.0)
-	var p0 := Vector2(26.0, 52.0)
-	var p1 := Vector2(54.0, 24.0)
-	c.draw_line(p0, p1, Color.WHITE, 6.0)
-	c.draw_colored_polygon(PackedVector2Array([p0 + Vector2(-5.0, 3.0), p0 + Vector2(1.0, -3.0), p0 + Vector2(3.0, 5.0)]), Color.WHITE)
-	c.draw_string(fonte, Vector2(78.0, 38.0), "CRIADOR DE PERSONAGENS", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 24, Color.WHITE)
-	c.draw_string(fonte, Vector2(78.0, 62.0), "Crie, edite e personalize seu lutador!", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, COR_SUAVE)
-	c.draw_string(fonte, Vector2(560.0, 28.0), "Nome do Personagem:", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 14, COR_SUAVE)
-
-
 func _painel(c: Control, r: Rect2) -> void:
 	c.draw_rect(r, COR_PAINEL)
 	c.draw_rect(r, COR_BORDA, false, 2.0)
 
 
-func _tam_sprite() -> String:
-	var tex: Texture2D = null
-	var parado: Array = (_p["sprites"] as Dictionary)["parado"]
-	if parado.size() > 0:
-		tex = Sprites.textura(Sprites.caminho_quadro(_pasta_midia, parado, 0))
-	if tex == null:
-		for g in _p["golpes"]:
-			var fr: Array = (g as Dictionary)["frames"]
-			if fr.size() > 0:
-				tex = Sprites.textura(Sprites.caminho_quadro(_pasta_midia, fr, 0))
-				if tex != null:
-					break
-	if tex == null:
-		return "-"
-	return "%dx%d" % [int(tex.get_size().x), int(tex.get_size().y)]
-
-
-func _desenhar_info() -> void:
-	var fonte: Font = ThemeDB.fallback_font
-	var r := Rect2(Vector2.ZERO, R_INFO.size)
-	_painel(_info, r)
-	_info.draw_rect(Rect2(2.0, 2.0, r.size.x - 4.0, 36.0), Color(0.16, 0.13, 0.4))
-	_info.draw_circle(Vector2(26.0, 16.0), 5.0, COR_SUAVE)
-	_info.draw_arc(Vector2(26.0, 32.0), 9.0, PI, TAU, 10, COR_SUAVE, 3.0)
-	_info.draw_string(fonte, Vector2(44.0, 27.0), "Informacoes", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color(0.8, 0.7, 1.0))
-	var anim: int = 0
-	var spr: Dictionary = _p["sprites"]
-	for slot in Formato.SLOTS:
-		if (spr[slot] as Array).size() > 0:
-			anim += 1
-	var sons: int = 0
-	for g in _p["golpes"]:
-		if str(((g as Dictionary)["sons"] as Dictionary)["uso"]) != "":
-			sons += 1
-	for ev in Eventos.TODOS:
-		if _achar_som_evento(str(ev)) != "":
-			sons += 1
-	var linhas: Array = [["Sprite:", _tam_sprite()], ["Animacoes:", "%d / %d" % [anim, Formato.SLOTS.size()]], ["Golpes:", str((_p["golpes"] as Array).size())], ["Sons:", str(sons)]]
-	for i in range(linhas.size()):
-		var y: float = 48.0 + float(i) * 30.0
-		_info.draw_string(fonte, Vector2(18.0, y + 20.0), str(linhas[i][0]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16, COR_TEXTO)
-		_info.draw_string(fonte, Vector2(130.0, y + 20.0), str(linhas[i][1]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16, Color(0.85, 0.85, 0.95))
-		_info.draw_string(fonte, Vector2(r.size.x - 22.0, y + 20.0), ">", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16, COR_SUAVE)
-	_info.draw_line(Vector2(14.0, 172.0), Vector2(r.size.x - 14.0, 172.0), Color(1, 1, 1, 0.2), 1.0)
-	_info.draw_string(fonte, Vector2(14.0, 186.0), "Toque numa linha para abrir.", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 11, COR_SUAVE)
-
-
 func _desenhar_cartao() -> void:
 	var fonte: Font = ThemeDB.fallback_font
-	_painel(_cartao, Rect2(Vector2.ZERO, R_GOLPE.size))
+	_painel(_cartao, Rect2(Vector2.ZERO, _cartao.size))
 	var l1: String = "-"
 	var l2: String = ""
 	var cor2: Color = COR_SUAVE
 	if _alvo_slot != "":
-		l1 = "Animacao: %s" % str(Formato.ROTULOS_SLOT[_alvo_slot])
-		l2 = "%d sprite(s)" % _frames_alvo().size()
+		l1 = str(Formato.ROTULOS_SLOT[_alvo_slot])
+		l2 = "Animacao - %d sprite(s)" % _frames_alvo().size()
 	elif _sel >= 0:
 		var g: Dictionary = _golpe()
-		l1 = "%s - %s%s" % [str(g["botao"]), str(g["nome"]), "  [fixo]" if bool(g["base"]) else ""]
-		l2 = "Prioridade #%d de %d" % [_sel + 1, (_p["golpes"] as Array).size()]
+		l1 = "%s  %s" % [str(g["botao"]), str(g["nome"])]
+		l2 = "Prioridade %d/%d%s" % [_sel + 1, (_p["golpes"] as Array).size(), "  [fixo]" if bool(g["base"]) else ""]
 		var cob: int = _coberto_por(_sel)
 		if cob >= 0:
 			l2 = "Nunca sai: coberto pelo #%d" % (cob + 1)
 			cor2 = Color(1.0, 0.5, 0.4)
 	else:
 		l1 = "Nenhum golpe"
-		l2 = "Adicione um golpe"
-	_cartao.draw_string(fonte, Vector2(12.0, 22.0), l1, HORIZONTAL_ALIGNMENT_LEFT, R_GOLPE.size.x - 24.0, 15, COR_TEXTO)
-	_cartao.draw_string(fonte, Vector2(12.0, 44.0), l2, HORIZONTAL_ALIGNMENT_LEFT, R_GOLPE.size.x - 24.0, 13, cor2)
+		l2 = "Toque em Adicionar golpe"
+	_cartao.draw_string(fonte, Vector2(10.0, 30.0), l1, HORIZONTAL_ALIGNMENT_LEFT, _cartao.size.x - 20.0, 18, COR_TEXTO)
+	_cartao.draw_string(fonte, Vector2(10.0, 56.0), l2, HORIZONTAL_ALIGNMENT_LEFT, _cartao.size.x - 20.0, 14, cor2)
+	_cartao.draw_string(fonte, Vector2(10.0, 80.0), "Editando", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, COR_SUAVE)
 
 
 func _textura_do(frames: Array, i: int) -> Texture2D:
@@ -1301,6 +1137,7 @@ func _textura_do(frames: Array, i: int) -> Texture2D:
 
 
 # Sprite mostrado na visualização: o selecionado na timeline (ou o da animação, se estiver testando).
+
 func _textura_atual() -> Texture2D:
 	var frames: Array = _frames_alvo()
 	if frames.size() > 0:
@@ -1316,7 +1153,6 @@ func _textura_atual() -> Texture2D:
 	if parado.size() > 0:
 		return _textura_do(parado, 0)
 	return null
-
 
 func _desenhar_area() -> void:
 	var fonte: Font = ThemeDB.fallback_font
@@ -1336,7 +1172,7 @@ func _desenhar_area() -> void:
 		z = clampf((tam.y - 28.0) / maxf(ts.y, 1.0), 0.25, 6.0)
 		_area.draw_texture_rect(tex, Rect2(pe.x - ts.x * z * 0.5, pe.y - ts.y * z, ts.x * z, ts.y * z), false)
 	else:
-		_area.draw_string(fonte, Vector2(0.0, tam.y * 0.5), "Sem sprite. Toque no + da timeline para adicionar.", HORIZONTAL_ALIGNMENT_CENTER, tam.x, 15, COR_SUAVE)
+		_area.draw_string(fonte, Vector2(0.0, tam.y * 0.5), "Sem sprite. Toque no + da timeline.", HORIZONTAL_ALIGNMENT_CENTER, tam.x, 18, COR_SUAVE)
 	if _mostrar_caixas and _alvo_slot == "" and _sel >= 0:
 		var esc: float = maxf(0.1, float(_p["altura_px"]) / 120.0) * (z if tex != null else 1.0)
 		_area.draw_rect(Rect2(pe.x - 25.0 * esc, pe.y - 120.0 * esc, 50.0 * esc, 120.0 * esc), Color(0.3, 0.6, 1.0), false, 2.0)
@@ -1346,7 +1182,7 @@ func _desenhar_area() -> void:
 		_area.draw_rect(rh, Color(1.0, 0.3, 0.3), false, 2.0)
 	var n: int = _frames_alvo().size()
 	if n > 0:
-		_area.draw_string(fonte, Vector2(12.0, 22.0), "Sprite %d/%d" % [_q_sel + 1, n], HORIZONTAL_ALIGNMENT_LEFT, -1.0, 14, COR_TEXTO)
+		_area.draw_string(fonte, Vector2(12.0, 24.0), "Sprite %d/%d" % [_q_sel + 1, n], HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16, COR_TEXTO)
 
 
 func _desenhar_linha() -> void:
@@ -1354,9 +1190,9 @@ func _desenhar_linha() -> void:
 	var tam: Vector2 = R_LINHA.size
 	_painel(_linha, Rect2(Vector2.ZERO, tam))
 	var n: int = _frames_alvo().size()
-	# setas
-	_linha.draw_colored_polygon(PackedVector2Array([Vector2(26.0, tam.y * 0.5 - 12.0), Vector2(26.0, tam.y * 0.5 + 12.0), Vector2(12.0, tam.y * 0.5)]), COR_BORDA if _t_off > 0 else Color(0.3, 0.3, 0.4))
-	_linha.draw_colored_polygon(PackedVector2Array([Vector2(tam.x - 26.0, tam.y * 0.5 - 12.0), Vector2(tam.x - 26.0, tam.y * 0.5 + 12.0), Vector2(tam.x - 12.0, tam.y * 0.5)]), COR_BORDA if _t_off + 5 < n + 1 else Color(0.3, 0.3, 0.4))
+	var ym: float = (tam.y - 20.0) * 0.5 + 4.0
+	_linha.draw_colored_polygon(PackedVector2Array([Vector2(32.0, ym - 16.0), Vector2(32.0, ym + 16.0), Vector2(12.0, ym)]), COR_BORDA if _t_off > 0 else Color(0.3, 0.3, 0.4))
+	_linha.draw_colored_polygon(PackedVector2Array([Vector2(tam.x - 32.0, ym - 16.0), Vector2(tam.x - 32.0, ym + 16.0), Vector2(tam.x - 12.0, ym)]), COR_BORDA if _t_off + VISIVEIS < n + 1 else Color(0.3, 0.3, 0.4))
 	var crono: Array = []
 	var imp: int = -1
 	if _alvo_slot == "" and _sel >= 0:
@@ -1371,8 +1207,8 @@ func _desenhar_linha() -> void:
 			_linha.draw_rect(r, Color(0.1, 0.09, 0.22))
 			_linha.draw_rect(r, COR_BORDA, false, 2.0)
 			var c: Vector2 = r.get_center()
-			_linha.draw_line(c + Vector2(-14.0, 0.0), c + Vector2(14.0, 0.0), COR_TEXTO, 3.0)
-			_linha.draw_line(c + Vector2(0.0, -14.0), c + Vector2(0.0, 14.0), COR_TEXTO, 3.0)
+			_linha.draw_line(c + Vector2(-16.0, 0.0), c + Vector2(16.0, 0.0), COR_TEXTO, 4.0)
+			_linha.draw_line(c + Vector2(0.0, -16.0), c + Vector2(0.0, 16.0), COR_TEXTO, 4.0)
 			continue
 		_linha.draw_rect(r, Color(0.12, 0.11, 0.26))
 		var tex: Texture2D = _textura_do(frames, i)
@@ -1387,26 +1223,20 @@ func _desenhar_linha() -> void:
 		if i < crono.size():
 			var item: Dictionary = crono[i]
 			legenda += "  %df" % (int(item["ate"]) - int(item["de"]))
-		_linha.draw_string(fonte, Vector2(r.position.x, r.end.y + 14.0), legenda, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 12, COR_SUAVE)
+		_linha.draw_string(fonte, Vector2(r.position.x, r.end.y + 16.0), legenda, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 14, COR_SUAVE)
 		if i == imp:
-			_linha.draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 14.0), Color(0.9, 0.2, 0.2))
-			_linha.draw_string(fonte, Vector2(r.position.x, r.position.y + 11.0), "IMPACTO", HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 10, Color.WHITE)
-
-
-func _desenhar_preview(c: Control) -> void:
-	c.draw_rect(Rect2(Vector2.ZERO, c.size), Color(0.1, 0.13, 0.24))
-	var esc: float = maxf(0.1, float(_p["altura_px"]) / 120.0)
-	var visivel: float = 120.0 * esc
-	var fator: float = minf(1.0, (c.size.y * 0.8) / maxf(visivel, 1.0))
-	var pe := Vector2(c.size.x * 0.35, c.size.y * 0.9)
-	c.draw_line(Vector2(0, pe.y), Vector2(c.size.x, pe.y), Color(0.5, 0.5, 0.6), 2.0)
-	c.draw_rect(Rect2(pe.x - 25.0 * esc * fator, pe.y - visivel * fator, 50.0 * esc * fator, visivel * fator), Color(0.35, 0.45, 0.7, 0.7))
-	if _sel < 0:
-		return
-	var hb: Dictionary = _golpe()["hitbox"]
-	var r := Rect2(pe.x + float(hb["x"]) * esc * fator, pe.y + float(hb["y"]) * esc * fator, float(hb["w"]) * esc * fator, float(hb["h"]) * esc * fator)
-	c.draw_rect(r, Color(1, 0.2, 0.2, 0.45))
-	c.draw_rect(r, Color(1, 0.3, 0.3), false, 2.0)
+			_linha.draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 16.0), Color(0.9, 0.2, 0.2))
+			_linha.draw_string(fonte, Vector2(r.position.x, r.position.y + 13.0), "IMPACTO", HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 11, Color.WHITE)
+		# Etiqueta de som: nota musical no canto do sprite que tem som.
+		var ns: int = _sons_no_quadro(i)
+		if ns > 0:
+			var cb := Vector2(r.end.x - 14.0, r.end.y - 14.0)
+			_linha.draw_circle(cb, 12.0, Color(1.0, 0.55, 0.2))
+			_linha.draw_circle(cb + Vector2(-3.0, 4.0), 3.2, Color.WHITE)
+			_linha.draw_line(cb + Vector2(0.0, 4.0), cb + Vector2(0.0, -6.0), Color.WHITE, 2.0)
+			_linha.draw_line(cb + Vector2(0.0, -6.0), cb + Vector2(5.0, -3.0), Color.WHITE, 2.0)
+			if ns > 1:
+				_linha.draw_string(fonte, cb + Vector2(-20.0, -10.0), "x%d" % ns, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, Color(1.0, 0.8, 0.5))
 
 
 # ---------- salvar, backup ----------

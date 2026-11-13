@@ -29,6 +29,30 @@ const SLOTS_EM_CICLO := ["parado", "andando", "pulando", "defendendo"]
 const FRAMES_POR_SPRITE_CICLO: int = 8
 
 # Golpes que todo personagem tem. Só os quadros e o som deles podem ser trocados.
+# Blocos de comportamento do golpe (estilo Pocket Code). Cada bloco: [parâmetro, padrão, mín, máx, passo].
+# "quadro" é o frame do golpe em que o bloco acontece (0 = começo).
+const BLOCOS_MAX := 24
+const BLOCOS_SPEC := {
+	"mover": [["quadro", 0, 0, 199, 1], ["vx", 250, -600, 600, 25], ["frames", 10, 1, 120, 1]],
+	"pular": [["quadro", 0, 0, 199, 1], ["vy", 600, 50, 1500, 50]],
+	"parar": [["quadro", 0, 0, 199, 1]],
+	"projetil": [["quadro", 8, 0, 199, 1], ["ox", 40, -100, 300, 10], ["oy", -70, -200, 0, 10], ["vx", 320, -900, 900, 20],
+		["w", 30, 5, 200, 5], ["h", 30, 5, 200, 5], ["dano", 60, 0, 999, 10], ["forca", 1, 1, 3, 1], ["vida", 90, 10, 600, 10]],
+	"comecar_de": [],
+	"ao_fim": [["vy", 600, 50, 1500, 50]],
+}
+const BLOCOS_ROTULOS := {
+	"mover": "Mover", "pular": "Subir / pular", "parar": "Parar de mover", "projetil": "Lancar magia",
+	"comecar_de": "So comeca depois do golpe", "ao_fim": "Quando o golpe terminar",
+}
+const BLOCOS_PARAM_ROTULOS := {
+	"quadro": "No frame", "vx": "Velocidade (px/s)", "frames": "Duracao (frames)", "vy": "Impulso",
+	"ox": "Posicao X", "oy": "Posicao Y", "w": "Largura", "h": "Altura", "dano": "Dano", "forca": "Forca", "vida": "Duracao (frames)",
+}
+const MAX_SONS_QUADROS := 32
+const QUANDOS := ["acertar", "sempre"]
+const ACOES_FIM := ["ir_para", "subir"]
+
 const BASE := {
 	"LP": {"nome": "Low Punch", "forca": 1, "startup": 5, "active": 3, "recovery": 8, "dano": 40,
 		"blowoff": false, "hitbox": {"x": 30, "y": -100, "w": 40, "h": 30}},
@@ -64,6 +88,8 @@ static func padrao_golpe() -> Dictionary:
 		"hitbox": {"x": 30, "y": -100, "w": 40, "h": 30},
 		"base": false,
 		"sprite_impacto": -1,
+		"sons_quadros": [],
+		"blocos": [],
 		"frames": [],
 		"sons": {"uso": ""},
 		"efeitos": {
@@ -126,9 +152,15 @@ static func normalizar_golpe(g_in: Dictionary) -> Dictionary:
 	}
 
 	r["frames"] = _lista_texto(r["frames"]).slice(0, MAX_QUADROS)
+	r["sons_quadros"] = _sons_quadros(r["sons_quadros"])
+	r["blocos"] = _blocos(r["blocos"])
 
 	var sons = r["sons"] if typeof(r["sons"]) == TYPE_DICTIONARY else {}
 	r["sons"] = {"uso": str(sons.get("uso", ""))}
+	var sons_ant: Dictionary = r["sons"]
+	if str(sons_ant.get("uso", "")) != "" and (r["sons_quadros"] as Array).is_empty():
+		(r["sons_quadros"] as Array).append({"quadro": 0, "arquivo": str(sons_ant["uso"])})
+		sons_ant["uso"] = ""
 
 	var efeitos = r["efeitos"] if typeof(r["efeitos"]) == TYPE_DICTIONARY else {}
 	r["efeitos"] = {
@@ -244,6 +276,53 @@ static func sanitizar_id(texto: String) -> String:
 
 
 # ---------- Quadros e tempo (60 FPS) ----------
+
+# Sons por sprite: [{"quadro": índice do sprite, "arquivo": caminho relativo}].
+static func _sons_quadros(v) -> Array:
+	var r: Array = []
+	if typeof(v) != TYPE_ARRAY:
+		return r
+	for it in v:
+		if typeof(it) == TYPE_DICTIONARY and str(it.get("arquivo", "")) != "" and r.size() < MAX_SONS_QUADROS:
+			r.append({"quadro": clampi(int(it.get("quadro", 0)), 0, MAX_QUADROS), "arquivo": str(it["arquivo"])})
+	return r
+
+
+static func bloco_padrao(tipo: String) -> Dictionary:
+	var b := {"tipo": tipo}
+	for p in BLOCOS_SPEC.get(tipo, []):
+		b[str(p[0])] = int(p[1])
+	if tipo == "comecar_de":
+		b["golpe"] = ""
+		b["quando"] = "acertar"
+	if tipo == "ao_fim":
+		b["acao"] = "ir_para"
+		b["golpe"] = ""
+	return b
+
+
+static func _blocos(v) -> Array:
+	var r: Array = []
+	if typeof(v) != TYPE_ARRAY:
+		return r
+	for it in v:
+		if typeof(it) != TYPE_DICTIONARY or not BLOCOS_SPEC.has(str(it.get("tipo", ""))) or r.size() >= BLOCOS_MAX:
+			continue
+		var tipo: String = str(it["tipo"])
+		var b: Dictionary = bloco_padrao(tipo)
+		for p in BLOCOS_SPEC[tipo]:
+			b[str(p[0])] = clampi(int(it.get(str(p[0]), p[1])), int(p[2]), int(p[3]))
+		if tipo == "comecar_de" or tipo == "ao_fim":
+			b["golpe"] = str(it.get("golpe", "")).left(40)
+		if tipo == "comecar_de":
+			var q: String = str(it.get("quando", "acertar"))
+			b["quando"] = q if QUANDOS.has(q) else "acertar"
+		if tipo == "ao_fim":
+			var a: String = str(it.get("acao", "ir_para"))
+			b["acao"] = a if ACOES_FIM.has(a) else "ir_para"
+		r.append(b)
+	return r
+
 
 static func total_frames(g: Dictionary) -> int:
 	return int(g["startup"]) + int(g["active"]) + int(g["recovery"])

@@ -38,8 +38,20 @@ const ICON_Y := 420.0
 const ICON_TAM := 64.0
 const ICON_ESPACO := 175.0
 const DISCO_C := Vector2(922.0, 36.0)
-const DISCO_R := 18.0
-const BOLHA_W := 320.0
+const DISCO_R := 24.0
+const BOLHA_W := 340.0
+
+# Fundo do menu em 4 camadas (PNGs transparentes do tamanho da tela, em ui/menu/):
+#   camada1_fundo      fundo da tela inicial
+#   camada2_movimento  algo que se move (rola na horizontal; pode ter sprites)
+#   personagem_<menu>  arte do personagem (troca a cada menu: online, local, historia, editar, colecionaveis)
+#   camada4_borda      borda por cima de tudo
+# Cada camada aceita UM arquivo (nome.png) ou SPRITES em sequência (nome_1.png, nome_2.png...),
+# que tocam em loop a CAMADAS_FPS. Sem as camadas, usa o fundo antigo fundo_<menu>.png.
+const CAMADAS_FPS := 12.0
+const CAMADA_MOV_VEL := 40.0
+const TROCA_ARTE_SEG := 0.35
+const TROCA_ARTE_DESLOCA := 80.0
 const BOLHA_TEMPO_AUTO := 4.0
 const BOLHA_TEMPO_TOQUE := 7.0
 
@@ -116,6 +128,13 @@ var _bolha_t: float = 0.0
 var _bolha_toque: bool = false
 var _bolha_w: float = 0.0
 var _nome_faixa: String = ""
+var _giro: float = 0.0
+var _camadas: Dictionary = {}
+var _arte_ant: int = -1
+var _arte_dir: int = 1
+var _arte_t: float = 1.0
+var _notas: Array = []
+var _nota_t: float = 0.0
 
 # Pedido para o editor ao abrir: "criar" ou "editar".
 static var modo_editor: String = "editar"
@@ -166,6 +185,8 @@ func _process(delta: float) -> void:
 		aviso_t -= 1
 		if aviso_t == 0:
 			aviso = ""
+	_arte_t = minf(1.0, _arte_t + delta / TROCA_ARTE_SEG)
+	_animar_disco(delta)
 	queue_redraw()
 
 func _on_faixa(nome: String) -> void:
@@ -174,12 +195,65 @@ func _on_faixa(nome: String) -> void:
 		_bolha_t = BOLHA_TEMPO_AUTO
 		_bolha_toque = false
 
-func _draw() -> void:
-	var fundo: Texture2D = _textura(str(ABAS[aba]["fundo"]))
-	if fundo != null:
-		draw_texture_rect(fundo, Rect2(0.0, 0.0, VIEW_W, VIEW_H), false)
+# Sprites de uma camada: nome.png ou nome_1.png, nome_2.png... (guardados em cache).
+func _frames_camada(nome: String) -> Array:
+	if _camadas.has(nome):
+		return _camadas[nome]
+	var r: Array = []
+	var unico: Texture2D = _textura(nome)
+	if unico != null:
+		r.append(unico)
 	else:
-		draw_rect(Rect2(0.0, 0.0, VIEW_W, VIEW_H), CORES[aba])
+		for i in range(1, 65):
+			var t: Texture2D = _textura("%s_%d" % [nome, i])
+			if t == null:
+				break
+			r.append(t)
+	_camadas[nome] = r
+	return r
+
+func _quadro_camada(nome: String) -> Texture2D:
+	var f: Array = _frames_camada(nome)
+	if f.is_empty():
+		return null
+	return f[int(_tempo * CAMADAS_FPS) % f.size()]
+
+func _desenhar_camada(nome: String, desloca: Vector2 = Vector2.ZERO, alfa: float = 1.0) -> bool:
+	var t: Texture2D = _quadro_camada(nome)
+	if t == null:
+		return false
+	draw_texture_rect(t, Rect2(desloca, Vector2(VIEW_W, VIEW_H)), false, Color(1.0, 1.0, 1.0, alfa))
+	return true
+
+func _nome_arte(i: int) -> String:
+	return "personagem_" + str(ABAS[i]["icone"])
+
+func _desenhar_camadas() -> void:
+	# 1. fundo (sem ele, usa o fundo antigo do menu ou a cor)
+	if not _desenhar_camada("camada1_fundo"):
+		var antigo: Texture2D = _textura(str(ABAS[aba]["fundo"]))
+		if antigo != null:
+			draw_texture_rect(antigo, Rect2(0.0, 0.0, VIEW_W, VIEW_H), false)
+		else:
+			draw_rect(Rect2(0.0, 0.0, VIEW_W, VIEW_H), CORES[aba])
+	# 2. movimento: rola na horizontal, repetindo
+	var mov: Texture2D = _quadro_camada("camada2_movimento")
+	if mov != null:
+		var x: float = fposmod(_tempo * CAMADA_MOV_VEL, VIEW_W)
+		draw_texture_rect(mov, Rect2(-x, 0.0, VIEW_W, VIEW_H), false)
+		draw_texture_rect(mov, Rect2(VIEW_W - x, 0.0, VIEW_W, VIEW_H), false)
+	# 3. arte do personagem: a única que muda com o menu (desliza e some/aparece na troca)
+	if _arte_t < 1.0 and _arte_ant >= 0:
+		var e: float = _arte_t * _arte_t * (3.0 - 2.0 * _arte_t)
+		_desenhar_camada(_nome_arte(_arte_ant), Vector2(-float(_arte_dir) * TROCA_ARTE_DESLOCA * e, 0.0), 1.0 - e)
+		_desenhar_camada(_nome_arte(aba), Vector2(float(_arte_dir) * TROCA_ARTE_DESLOCA * (1.0 - e), 0.0), e)
+	else:
+		_desenhar_camada(_nome_arte(aba))
+	# 4. borda
+	_desenhar_camada("camada4_borda")
+
+func _draw() -> void:
+	_desenhar_camadas()
 	if config_aberto:
 		draw_rect(Rect2(0.0, 0.0, VIEW_W, VIEW_H), Color(0.0, 0.0, 0.0, 0.6))
 		for e in _layout():
@@ -286,6 +360,40 @@ func _espada(c: Vector2, k: float, cor: Color, w: float, p0: Vector2, p1: Vector
 	draw_line(c + (g - n * 8.0) * k, c + (g + n * 8.0) * k, cor, w)
 
 # Disco de música no canto superior direito. Abre uma bolha com o nome da faixa; ao toque, com botão de mutar.
+func _tocando() -> bool:
+	return str(_audio().nome_faixa) != "" and not bool(_audio().musica_muda)
+
+# O disco gira e solta notas brancas enquanto toca; mutado, para de girar e de soltar notas.
+func _animar_disco(delta: float) -> void:
+	if _tocando():
+		_giro += delta * 4.0
+		_nota_t += delta
+		if _nota_t >= 0.5:
+			_nota_t = 0.0
+			_notas.append({
+				"p": DISCO_C + Vector2(randf_range(-16.0, 2.0), randf_range(-4.0, 10.0)),
+				"v": Vector2(-randf_range(22.0, 48.0), randf_range(18.0, 40.0)),
+				"vida": 1.9, "fase": randf() * TAU, "tam": randf_range(0.9, 1.3),
+			})
+	var vivas: Array = []
+	for n in _notas:
+		var d: Dictionary = n
+		d["vida"] = float(d["vida"]) - delta
+		if float(d["vida"]) > 0.0:
+			d["p"] = (d["p"] as Vector2) + (d["v"] as Vector2) * delta + Vector2(0.0, sin(float(d["fase"]) + _tempo * 5.0) * 10.0 * delta)
+			vivas.append(d)
+	_notas = vivas
+
+func _desenhar_nota(n: Dictionary) -> void:
+	var p: Vector2 = n["p"]
+	var s: float = float(n["tam"]) * 1.4
+	var cor := Color(1.0, 1.0, 1.0, clampf(float(n["vida"]) / 1.9, 0.0, 1.0))
+	draw_circle(p, 4.4 * s, cor)
+	var topo: Vector2 = p + Vector2(4.0 * s, -15.0 * s)
+	draw_line(p + Vector2(4.0 * s, 0.0), topo, cor, 2.0)
+	draw_line(topo, topo + Vector2(7.0 * s, 5.0 * s), cor, 2.5)
+
+# Disco de música no canto superior direito. Abre uma bolha com o nome da faixa; ao toque, com botão de mutar.
 func _desenhar_disco() -> void:
 	var fonte: Font = ThemeDB.fallback_font
 	var audio: Variant = _audio()
@@ -293,30 +401,36 @@ func _desenhar_disco() -> void:
 	var cor := Color(1.0, 1.0, 1.0, 0.9) if not muda else Color(1.0, 0.5, 0.5, 0.9)
 	if _bolha_w > 4.0:
 		var r: Rect2 = _rect_bolha()
-		draw_rect(r, Color(0.0, 0.0, 0.0, 0.7))
+		draw_rect(r, Color(0.0, 0.0, 0.0, 0.72))
 		draw_rect(r, Color(1.0, 1.0, 1.0, 0.4), false, 1.5)
 		if _bolha_w > BOLHA_W * 0.6:
-			var largura: float = r.size.x - (60.0 if _bolha_toque else 20.0)
+			var largura: float = r.size.x - (70.0 if _bolha_toque else 22.0)
 			var nome: String = _nome_faixa if _nome_faixa != "" else "-"
-			draw_string(fonte, Vector2(r.position.x + 12.0, r.position.y + 25.0), nome, HORIZONTAL_ALIGNMENT_LEFT, largura, 15, Color.WHITE)
+			draw_string(fonte, Vector2(r.position.x + 14.0, r.position.y + 29.0), nome, HORIZONTAL_ALIGNMENT_LEFT, largura, 18, Color.WHITE)
 			if _bolha_toque:
 				_desenhar_mutar(_rect_mutar(), muda)
-	draw_circle(DISCO_C, DISCO_R, Color(0.05, 0.05, 0.1, 0.85))
-	draw_arc(DISCO_C, DISCO_R, 0.0, TAU, 28, cor, 2.5)
-	draw_arc(DISCO_C, DISCO_R * 0.45, 0.0, TAU, 20, cor, 2.0)
-	var giro: float = _tempo * 3.0 if (not muda and str(audio.nome_faixa) != "") else 0.0
-	draw_arc(DISCO_C, DISCO_R * 0.75, giro, giro + 1.2, 8, cor, 2.0)
+	for n in _notas:
+		_desenhar_nota(n)
+	draw_circle(DISCO_C, DISCO_R, Color(0.04, 0.04, 0.08, 0.92))
+	draw_arc(DISCO_C, DISCO_R, 0.0, TAU, 32, cor, 2.5)
+	for k in [0.82, 0.66]:
+		draw_arc(DISCO_C, DISCO_R * float(k), 0.0, TAU, 28, Color(1.0, 1.0, 1.0, 0.18), 1.5)
+	draw_arc(DISCO_C, DISCO_R * 0.9, _giro, _giro + 0.9, 8, Color(1.0, 1.0, 1.0, 0.6), 2.5)
+	draw_arc(DISCO_C, DISCO_R * 0.9, _giro + PI, _giro + PI + 0.9, 8, Color(1.0, 1.0, 1.0, 0.6), 2.5)
+	draw_circle(DISCO_C, DISCO_R * 0.38, Color(0.9, 0.35, 0.2))
+	draw_line(DISCO_C, DISCO_C + Vector2(cos(_giro), sin(_giro)) * DISCO_R * 0.38, Color.WHITE, 2.0)
+	draw_circle(DISCO_C, 2.5, Color(0.04, 0.04, 0.08))
 	if muda:
-		draw_line(DISCO_C + Vector2(-12.0, 12.0), DISCO_C + Vector2(12.0, -12.0), Color(1.0, 0.4, 0.4), 3.0)
+		draw_line(DISCO_C + Vector2(-15.0, 15.0), DISCO_C + Vector2(15.0, -15.0), Color(1.0, 0.4, 0.4), 4.0)
 	if _modo_controle():
-		Glifos.desenhar(self, "SELECT", DISCO_C + Vector2(0.0, 40.0), 9.0, bool(_config().controle_ps()))
+		Glifos.desenhar(self, "SELECT", DISCO_C + Vector2(0.0, 44.0), 11.0, bool(_config().controle_ps()))
 
 func _rect_bolha() -> Rect2:
-	return Rect2(DISCO_C.x - DISCO_R - 8.0 - _bolha_w, DISCO_C.y - 18.0, _bolha_w, 36.0)
+	return Rect2(DISCO_C.x - DISCO_R - 8.0 - _bolha_w, DISCO_C.y - 24.0, _bolha_w, 48.0)
 
 func _rect_mutar() -> Rect2:
 	var r: Rect2 = _rect_bolha()
-	return Rect2(r.end.x - 42.0, r.position.y + 3.0, 36.0, 30.0)
+	return Rect2(r.end.x - 56.0, r.position.y + 4.0, 50.0, 40.0)
 
 func _desenhar_mutar(r: Rect2, muda: bool) -> void:
 	draw_rect(r, Color(1.0, 1.0, 1.0, 0.12))
@@ -682,10 +796,12 @@ func _mover_sub(d: int) -> void:
 func _selecionar_aba(i: int) -> void:
 	i = clampi(i, 0, ABAS.size() - 1)
 	if i != aba:
+		_arte_ant = aba
+		_arte_dir = 1 if i > aba else -1
+		_arte_t = 0.0
 		aba = i
 		sub = 0
 		_som("menu_mover")
-		_tocar_musica_da_aba()
 
 func _confirmar() -> void:
 	var f: Array = _filhos_aba()
@@ -697,14 +813,12 @@ func _abrir_config() -> void:
 	if _overlay != null:
 		return
 	_som("menu_confirma")
-	_tocar_musica("menu_configuracoes")
 	_overlay = Configuracoes.new()
 	_overlay.fechado.connect(_on_config_fechada)
 	add_child(_overlay)
 
 func _on_config_fechada() -> void:
 	_overlay = null
-	_tocar_musica_da_aba()
 
 func _voltar_config_tudo() -> void:
 	config_nivel = 0
@@ -772,11 +886,9 @@ func _som(nome: String) -> void:
 
 # ---------- Música ----------
 
+# Música do menu: faixas aleatórias de musica/menu/ (não muda ao trocar de menu).
 func _tocar_musica_da_aba() -> void:
-	_tocar_musica(str(ABAS[aba]["musica"]))
+	_audio().tocar_aleatoria("menu")
 
-func _tocar_musica(nome: String) -> void:
-	if nome == _musica_atual:
-		return
-	_musica_atual = nome
-	_audio().tocar_musica(nome, true)
+
+

@@ -1,4 +1,4 @@
-extends CanvasLayer
+extends Control
 
 # HUD do sistema (Configurações > Tela > HUD do sistema). Arrastável pela tela toda.
 # Duas formas: "retangulo" (texto) e "quadrado" (com ícones e a moldura do aparelho).
@@ -41,8 +41,9 @@ func _config() -> Variant:
 
 
 func _ready() -> void:
-	layer = 128
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_painel = Control.new()
 	_painel.mouse_filter = Control.MOUSE_FILTER_STOP
 	_painel.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
@@ -50,6 +51,7 @@ func _ready() -> void:
 	_painel.gui_input.connect(_on_gui)
 	add_child(_painel)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
+	_config().hud_mudou.connect(atualizar_modo)
 	_ler_aparelho()
 	atualizar_modo()
 

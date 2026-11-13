@@ -107,6 +107,11 @@ var esquiva_trava: int = 0
 var reacao: String = "alto"
 var relogio: int = 0
 var _tras_antes: bool = false
+# Blocos de golpe: movimento programado, sons por sprite e encadeamento.
+var _mov_frames: int = 0
+var _mov_vx: float = 0.0
+var _cadeia: int = 0
+var _ultimo_idx_som: int = -2
 # Fila de eventos para a Luta tocar sons: {"tipo": String, "golpe": Dictionary}
 var eventos: Array = []
 
@@ -174,6 +179,9 @@ func resetar(x: float, olhando_direita: bool) -> void:
 	reacao = "alto"
 	relogio = 0
 	_tras_antes = false
+	_mov_frames = 0
+	_cadeia = 0
+	_ultimo_idx_som = -2
 
 # ---------- Entrada e estados ----------
 
@@ -210,7 +218,7 @@ func atualizar(dir: Vector2, apertados: Dictionary) -> void:
 		Estado.DECOLANDO:
 			_processar_decolagem(dir)
 		Estado.ATACANDO:
-			_processar_ataque()
+			_processar_ataque(apertados)
 		Estado.GOLPEADO:
 			if bloqueado and apertados.get("BO", false) and barra.valor >= CUSTO_GUARD_CANCEL and oponente != null:
 				_guard_cancel()
@@ -254,6 +262,8 @@ func _escolher_golpe(apertados: Dictionary) -> Dictionary:
 		var d: Dictionary = g
 		if not apertados.get(d["botao"], false):
 			continue
+		if not _bloco_do_tipo(d, "comecar_de").is_empty():
+			continue
 		if d["carga"] == "tras" and carga_tras_t < float(d["carga_seg"]):
 			continue
 		if d["carga"] == "baixo" and carga_baixo_t < float(d["carga_seg"]):
@@ -266,7 +276,11 @@ func _escolher_golpe(apertados: Dictionary) -> Dictionary:
 	return {}
 
 
-func _executar(g: Dictionary) -> void:
+func _executar(g: Dictionary, encadeado: bool = false) -> void:
+	if not encadeado:
+		_cadeia = 0
+	_mov_frames = 0
+	_ultimo_idx_som = -2
 	if str(g["carga"]) != "":
 		carga_tras_t = 0.0
 		carga_baixo_t = 0.0
@@ -281,17 +295,116 @@ func _executar(g: Dictionary) -> void:
 	total_ataque = int(g["startup"]) + int(g["active"]) + int(g["recovery"])
 	if not no_chao:
 		vel.x = 0.0
+	_blocos_do_quadro()
+	_sons_do_quadro()
 
 
-func _processar_ataque() -> void:
+func _processar_ataque(apertados: Dictionary) -> void:
 	tempo += 1
 	if tempo > total_ataque:
-		golpe_atual = {}
-		tempo = 0
-		estado = Estado.PULANDO if no_chao else Estado.PARADO
+		_fim_do_golpe()
 		return
-	if not no_chao:
+	_blocos_do_quadro()
+	_sons_do_quadro()
+	if _mov_frames > 0:
+		vel.x = _mov_vx
+		_mov_frames -= 1
+	elif not no_chao:
 		vel.x = 0.0
+	_tentar_encadear(apertados)
+
+
+func _bloco_do_tipo(g: Dictionary, tipo: String) -> Dictionary:
+	for b in g.get("blocos", []):
+		if str((b as Dictionary)["tipo"]) == tipo:
+			return b
+	return {}
+
+
+func _golpe_por_nome(nome: String) -> Dictionary:
+	for g in golpes:
+		if str((g as Dictionary)["nome"]) == nome:
+			return g
+	return {}
+
+
+# Blocos que acontecem num frame do golpe: mover, pular, parar e lançar magia.
+func _blocos_do_quadro() -> void:
+	for b in golpe_atual.get("blocos", []):
+		var d: Dictionary = b
+		var tipo: String = str(d["tipo"])
+		if not d.has("quadro") or int(d["quadro"]) != tempo:
+			continue
+		match tipo:
+			"mover":
+				_mov_vx = float(d["vx"]) * (1.0 if direita else -1.0)
+				_mov_frames = int(d["frames"])
+			"pular":
+				vel.y = -absf(float(d["vy"]))
+				no_chao = true
+			"parar":
+				_mov_frames = 0
+				vel.x = 0.0
+			"projetil":
+				eventos.append({"tipo": "projetil", "golpe": golpe_atual, "bloco": d})
+
+
+# Sons marcados em sprites do golpe: tocam quando o sprite aparece.
+func _sons_do_quadro() -> void:
+	var sons: Array = golpe_atual.get("sons_quadros", [])
+	if sons.is_empty():
+		return
+	var idx: int = Formato.indice_no_tempo(golpe_atual, tempo)
+	if idx == _ultimo_idx_som:
+		return
+	_ultimo_idx_som = idx
+	for s in sons:
+		if int((s as Dictionary)["quadro"]) == maxi(idx, 0):
+			eventos.append({"tipo": "som_quadro", "golpe": {}, "arquivo": str((s as Dictionary)["arquivo"])})
+
+
+# Golpe que "começa de outro": a partir do fim do startup, se o botão dele for apertado.
+func _tentar_encadear(apertados: Dictionary) -> void:
+	if _cadeia >= 6 or tempo < int(golpe_atual["startup"]):
+		return
+	for g in golpes:
+		var d: Dictionary = g
+		var b: Dictionary = _bloco_do_tipo(d, "comecar_de")
+		if b.is_empty() or str(b["golpe"]) != str(golpe_atual["nome"]):
+			continue
+		if str(b["quando"]) == "acertar" and not golpe_acertou:
+			continue
+		if not apertados.get(d["botao"], false):
+			continue
+		if bool(d["so_ar"]) and not no_chao:
+			continue
+		if float(d["custo"]) > barra.valor:
+			continue
+		_cadeia += 1
+		_executar(d, true)
+		return
+
+
+# Fim do golpe: bloco "Quando o golpe terminar" (subir ou ir para outro golpe).
+func _fim_do_golpe() -> void:
+	var g: Dictionary = golpe_atual
+	golpe_atual = {}
+	tempo = 0
+	_mov_frames = 0
+	estado = Estado.PULANDO if no_chao else Estado.PARADO
+	var b: Dictionary = _bloco_do_tipo(g, "ao_fim")
+	if b.is_empty():
+		return
+	if str(b["acao"]) == "subir":
+		vel.y = -absf(float(b["vy"]))
+		no_chao = true
+		estado = Estado.PULANDO
+		eventos.append({"tipo": "pulo", "golpe": {}})
+	elif _cadeia < 6:
+		var alvo: Dictionary = _golpe_por_nome(str(b["golpe"]))
+		if not alvo.is_empty():
+			_cadeia += 1
+			_executar(alvo, true)
 
 
 # Decolagem: começa no chão, sem movimento. Ao fim, decide alto ou baixo pelo cima

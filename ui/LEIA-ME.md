@@ -11,7 +11,13 @@ Tudo é opcional: sem arte, a engine desenha formas simples no lugar.
 
 ## Menu (centro inferior, ícones; esquerda/direita troca de menu, cima/baixo troca de submenu)
 Menus: Online, Local (Arcade, Versus, Treino), História, Editar (Criar personagem, Editar personagem), Colecionáveis.
-- Fundo de cada menu: `ui/menu/fundo_online.png`, `fundo_local.png`, `fundo_historia.png`, `fundo_editar.png`, `fundo_colecionaveis.png` (troca ao mudar de menu; submenus não têm fundo próprio)
+- **Fundo em 4 camadas** (PNGs com transparência, do tamanho da tela inteira, em `ui/menu/`; a ordem é de baixo para cima):
+  1. `camada1_fundo.png` - fundo da tela inicial
+  2. `camada2_movimento.png` - algo com movimento (rola na horizontal e repete)
+  3. `personagem_online.png`, `personagem_local.png`, `personagem_historia.png`, `personagem_editar.png`, `personagem_colecionaveis.png` - arte do personagem; **só esta camada muda com o menu** (desliza na troca)
+  4. `camada4_borda.png` - borda por cima de tudo
+  - **Sprites em qualquer camada:** em vez de um arquivo, use uma sequência `nome_1.png`, `nome_2.png`, `nome_3.png`... (ex.: `camada2_movimento_1.png`, `personagem_local_1.png`). Toca em loop a 12 FPS (`CAMADAS_FPS` no `Menu.gd`).
+  - Sem as camadas, usa o fundo antigo `fundo_<menu>.png`. A música do menu é aleatória (veja `sons/interface/LEIA-ME.md`).
 - Ícones (se não existirem, a engine desenha um): `ui/menu/icone_online.png`, `icone_local.png`, `icone_historia.png`, `icone_editar.png`, `icone_colecionaveis.png`
 - Ícones dos submenus: `ui/menu/icone_arcade.png`, `icone_versus.png`, `icone_treino.png`, `icone_criar.png`, `icone_editar.png`
 - Ícone de configurações (canto superior esquerdo): `ui/menu/icone_config.png`. Em modo controle aparece o ícone do botão START ao lado.

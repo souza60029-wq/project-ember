@@ -42,6 +42,7 @@ var p1 = Personagem.new()
 var p2 = Personagem.new()
 var nome_p1: String = "Sem personagem"
 var nome_p2: String = "Sem personagem"
+var projeteis: Array = []
 var dados1: Dictionary = {}
 var dados2: Dictionary = {}
 var pasta1: String = ""
@@ -76,6 +77,7 @@ func _physics_process(_delta: float) -> void:
 	_separar_corpos()
 	_tocar_eventos(p1, id1)
 	_tocar_eventos(p2, id2)
+	_passo_projeteis()
 	_expirar_combos()
 	if p1.estado == Personagem.Estado.KO or p2.estado == Personagem.Estado.KO:
 		ko_t += 1
@@ -100,13 +102,13 @@ func _carregar_lutadores() -> void:
 	_aplicar(p2, b, 2)
 
 # Música da luta: tema do jogador 1 (personagens/<id>/musica); sem tema, o do jogador 2;
-# sem nenhum, sorteia de musica/luta/.
+# sem nenhum, sorteia entre todas as músicas de musica/ (inclui musica/menu/).
 func _tocar_tema() -> void:
 	if not has_node("/root/Audio"):
 		return
 	var audio: Node = get_node("/root/Audio")
 	if not (audio.tocar_musica_personagem(id1) or audio.tocar_musica_personagem(id2)):
-		audio.tocar_aleatoria("luta", "luta")
+		audio.tocar_luta()
 
 func _obter(id: String) -> Dictionary:
 	if has_node("/root/Catalogo"):
@@ -154,25 +156,80 @@ func _aplicar(p, item: Dictionary, lado: int) -> void:
 func _tocar_eventos(p, id: String) -> void:
 	var fila: Array = p.eventos
 	p.eventos = []
-	if not has_node("/root/Audio"):
-		return
-	var audio: Node = get_node("/root/Audio")
+	var audio: Node = get_node("/root/Audio") if has_node("/root/Audio") else null
 	for e in fila:
 		var ev: Dictionary = e
 		var g: Dictionary = ev["golpe"]
-		var som_golpe: String = ""
-		if not g.is_empty():
-			som_golpe = str((g["sons"] as Dictionary).get("uso", ""))
-		match str(ev["tipo"]):
+		var tipo: String = str(ev["tipo"])
+		if tipo == "projetil":
+			_criar_projetil(p, ev["bloco"], g)
+			continue
+		if audio == null:
+			continue
+		match tipo:
 			"golpe":
-				var forte: bool = int(g["forca"]) >= 2
-				audio.tocar("ataque_forte" if forte else "ataque_leve", id, som_golpe)
+				audio.tocar("ataque_forte" if int(g["forca"]) >= 2 else "ataque_leve", id)
+			"som_quadro":
+				audio.tocar("", id, str(ev["arquivo"]))
 			"acerto":
 				audio.tocar("impacto_forte" if int(g["forca"]) >= 2 else "impacto_leve", id)
 			"bloqueio":
 				audio.tocar("bloqueio", id)
 			"parry", "guarda_quebrada", "esquiva", "pulo":
-				audio.tocar(str(ev["tipo"]), id)
+				audio.tocar(tipo, id)
+
+# ---------- Magias (projéteis lançados por blocos) ----------
+
+const DT := 1.0 / 60.0
+const MAX_PROJETEIS := 8
+
+func _criar_projetil(p, b: Dictionary, _g: Dictionary) -> void:
+	if projeteis.size() >= MAX_PROJETEIS:
+		return
+	var frente: float = 1.0 if p.direita else -1.0
+	var esc: float = float(p.escala)
+	var g: Dictionary = Formato.padrao_golpe()
+	g["nome"] = "Magia"
+	g["dano"] = int(b["dano"])
+	g["forca"] = int(b["forca"])
+	projeteis.append({
+		"dono": p,
+		"pos": p.pos + Vector2(float(b["ox"]) * frente * esc, float(b["oy"]) * esc),
+		"vel": Vector2(float(b["vx"]) * frente, 0.0),
+		"tam": Vector2(float(b["w"]), float(b["h"])) * esc,
+		"vida": int(b["vida"]),
+		"golpe": g,
+	})
+
+func _passo_projeteis() -> void:
+	var restantes: Array = []
+	for it in projeteis:
+		var pj: Dictionary = it
+		pj["pos"] = (pj["pos"] as Vector2) + (pj["vel"] as Vector2) * DT
+		pj["vida"] = int(pj["vida"]) - 1
+		var dono = pj["dono"]
+		var alvo = dono.oponente
+		var r := Rect2((pj["pos"] as Vector2) - (pj["tam"] as Vector2) * 0.5, pj["tam"])
+		var fora: bool = r.end.x < -80.0 or r.position.x > 1040.0
+		var g: Dictionary = pj["golpe"]
+		if int(pj["vida"]) > 0 and not fora:
+			if Caixa.colidem(r, alvo.corpo_rect()):
+				var res: String = alvo.resultado_para(g)
+				if res != "nada":
+					_aplicar_acerto(dono, alvo, g, res)
+					continue
+			restantes.append(pj)
+	projeteis = restantes
+
+func _desenhar_projeteis() -> void:
+	for it in projeteis:
+		var pj: Dictionary = it
+		var t: Vector2 = pj["tam"]
+		var r: float = maxf(t.x, t.y) * 0.5
+		draw_circle(pj["pos"], r, Color(1.0, 0.55, 0.15, 0.55))
+		draw_circle(pj["pos"], r * 0.6, Color(1.0, 0.9, 0.5, 0.95))
+		if _debug():
+			draw_rect(Rect2((pj["pos"] as Vector2) - t * 0.5, t), Color(1.0, 0.3, 0.3), false, 2.0)
 
 # ---------- Entrada ----------
 
@@ -307,6 +364,7 @@ func _reiniciar_luta() -> void:
 	mask1 = _mascara_vazia()
 	mask2 = _mascara_vazia()
 	ko_t = 0
+	projeteis.clear()
 
 func _resolver_combate(atk, dfn) -> void:
 	if not atk.hitbox_ativa() or atk.golpe_acertou:
@@ -318,6 +376,10 @@ func _resolver_combate(atk, dfn) -> void:
 	if res == "nada":
 		return
 	atk.golpe_acertou = true
+	_aplicar_acerto(atk, dfn, g, res)
+
+# Resultado de um golpe (ou magia) que encostou no defensor: parry, bloqueio ou dano.
+func _aplicar_acerto(atk, dfn, g: Dictionary, res: String) -> void:
 	if res == "parry":
 		dfn.receber_parry(g)
 		return
@@ -392,6 +454,7 @@ func _desenhar_luta() -> void:
 	draw_line(Vector2(0.0, Personagem.CHAO_Y), Vector2(VIEW_W, Personagem.CHAO_Y), Color(0.5, 0.5, 0.6), 2.0)
 	_desenhar_personagem(p1, Color(0.3, 0.6, 1.0), dados1, pasta1)
 	_desenhar_personagem(p2, Color(1.0, 0.45, 0.2), dados2, pasta2)
+	_desenhar_projeteis()
 	if _debug():
 		_desenhar_debug(p1)
 		_desenhar_debug(p2)

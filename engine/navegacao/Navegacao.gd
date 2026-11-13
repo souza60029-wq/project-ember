@@ -60,6 +60,9 @@ func _ready() -> void:
 	_botao.pressionado.connect(ir_para_menu)
 	add_child(_botao)
 
+	# HUD do sistema por cima de tudo (Configurações > Tela).
+	add_child(preload("res://engine/sistema/HudSistema.gd").new())
+
 	# Começa preto e revela.
 	_tween = create_tween()
 	_tween.tween_interval(0.2)

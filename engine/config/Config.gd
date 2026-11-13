@@ -10,6 +10,7 @@ signal modo_entrada_mudou(modo: String)
 signal idioma_mudou
 signal debug_mudou(ligado: bool)
 signal mapa_mudou
+signal hud_mudou
 
 const ARQUIVO := "user://config.json"
 const MODOS := ["automatico", "touch", "controle"]
@@ -35,7 +36,6 @@ var hud_modo := "desligado"
 var hud_pos := Vector2(16.0, 70.0)
 # Mapa de botões da luta: jogador (1 ou 2) -> {botão do controle: função}.
 var mapas := {}
-var _hud: Node = null
 var controle_conectado := false
 var controle_nome := ""
 var ultimo_botao := ""
@@ -47,8 +47,7 @@ func _ready() -> void:
 	mapas = {1: mapa_padrao(), 2: mapa_padrao()}
 	_carregar()
 	_aplicar_rotacao()
-	_hud = preload("res://engine/sistema/HudSistema.gd").new()
-	add_child(_hud)
+	_criar_pastas_do_app()
 	Input.joy_connection_changed.connect(_on_joy_mudou)
 	_checar_controles()
 	_modo_anterior = modo_efetivo()
@@ -127,13 +126,25 @@ func _aplicar_rotacao() -> void:
 			DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
 
 
+# Pastas do app no aparelho (no iOS aparecem no app Arquivos > No meu iPhone > Ember).
+# importar/ é de onde o editor lê sprites, sons e artes; musica/menu/ e musica/ são faixas extras.
+func _criar_pastas_do_app() -> void:
+	for sub in ["importar/sprites", "importar/sons", "importar/artes", "importar/musicas", "musica/menu"]:
+		DirAccess.make_dir_recursive_absolute("user://" + sub)
+	var leia := "user://importar/LEIA-ME.txt"
+	if not FileAccess.file_exists(leia):
+		var f := FileAccess.open(leia, FileAccess.WRITE)
+		if f != null:
+			f.store_string("Ember: coloque aqui os arquivos que voce quer usar no editor de personagem.\n\nsprites/  imagens dos golpes e animacoes\nsons/     sons dos golpes\nartes/    arte de selecao e card\n\nMusicas do jogo: pasta musica/ (todas tocam na luta) e musica/menu/ (tocam no menu).\n")
+			f.close()
+
+
 func definir_hud(m: String) -> void:
 	if not HUD_MODOS.has(m) or m == hud_modo:
 		return
 	hud_modo = m
 	_salvar()
-	if _hud != null:
-		_hud.atualizar_modo()
+	hud_mudou.emit()
 
 
 func definir_hud_pos(p: Vector2) -> void:

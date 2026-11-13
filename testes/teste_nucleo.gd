@@ -21,6 +21,7 @@ func _init() -> void:
 	_testar_combate()
 	_testar_tempo_sprites()
 	_testar_sistema()
+	_testar_blocos()
 	_testar_eventos()
 	print("Resultado: %d ok, %d falha(s)" % [passou, falhas])
 	quit(1 if falhas > 0 else 0)
@@ -274,3 +275,88 @@ func _testar_sistema() -> void:
 	_checar("iPhone 14 Pro tem Dynamic Island", h._tipo_iphone("iPhone15,2") == "island")
 	_checar("iPhone 16e tem notch", h._tipo_iphone("iPhone17,5") == "notch")
 	h.free()
+
+
+func _testar_blocos() -> void:
+	print("Blocos e sons por sprite")
+	# Normalização: blocos inválidos saem, números ficam dentro dos limites.
+	var g: Dictionary = Formato.normalizar_golpe({"botao": "LP", "blocos": [
+		{"tipo": "mover", "quadro": 3, "vx": 99999, "frames": 0},
+		{"tipo": "inventado"},
+		{"tipo": "comecar_de", "golpe": "Soco", "quando": "xyz"},
+		{"tipo": "ao_fim", "acao": "subir", "vy": 700}]})
+	var bl: Array = g["blocos"]
+	_checar("bloco desconhecido é descartado", bl.size() == 3)
+	_checar("números dos blocos são limitados", int(bl[0]["vx"]) == 600 and int(bl[0]["frames"]) == 1)
+	_checar("'quando' inválido volta ao padrão", str(bl[1]["quando"]) == "acertar")
+	# Som antigo (sons.uso) vira som no sprite 1.
+	var g2: Dictionary = Formato.normalizar_golpe({"botao": "LP", "sons": {"uso": "golpes/a.ogg"}})
+	_checar("som antigo migra para o sprite 1", (g2["sons_quadros"] as Array).size() == 1 and str(g2["sons"]["uso"]) == "")
+
+	# Motor: bloco Mover empurra para frente a partir do frame marcado.
+	var golpe: Dictionary = Formato.golpe_base("LP")
+	golpe["blocos"] = [Formato.bloco_padrao("mover")]
+	golpe["blocos"][0]["quadro"] = 2
+	golpe["blocos"][0]["vx"] = 300
+	golpe["blocos"][0]["frames"] = 4
+	golpe["sons_quadros"] = [{"quadro": 0, "arquivo": "golpes/x.ogg"}]
+	var a = Personagem.new()
+	var b = Personagem.new()
+	a.oponente = b
+	b.oponente = a
+	a.definir_golpes([golpe])
+	b.definir_golpes([golpe])
+	a.resetar(200.0, true)
+	b.resetar(600.0, false)
+	var bt := _sem_botoes()
+	bt["LP"] = true
+	a.atualizar(Vector2.ZERO, bt)
+	_checar("golpe começou", a.estado == Personagem.Estado.ATACANDO)
+	var tocou_som: bool = false
+	for e in a.eventos:
+		if str(e["tipo"]) == "som_quadro":
+			tocou_som = true
+	_checar("som do sprite 1 toca no começo do golpe", tocou_som)
+	var x0: float = a.pos.x
+	for i in range(6):
+		a.atualizar(Vector2.ZERO, _sem_botoes())
+	_checar("bloco Mover anda para frente", a.pos.x > x0 + 5.0)
+
+	# Magia: o bloco gera um evento de projétil.
+	var gm: Dictionary = Formato.golpe_base("HP")
+	gm["blocos"] = [Formato.bloco_padrao("projetil")]
+	gm["blocos"][0]["quadro"] = 0
+	var c = Personagem.new()
+	c.oponente = b
+	c.definir_golpes([gm])
+	c.resetar(200.0, true)
+	var bt2 := _sem_botoes()
+	bt2["HP"] = true
+	c.atualizar(Vector2.ZERO, bt2)
+	var achou: bool = false
+	for e2 in c.eventos:
+		if str(e2["tipo"]) == "projetil":
+			achou = true
+	_checar("bloco Lançar magia cria projétil", achou)
+
+	# Encadeamento: golpe que começa de outro só sai durante o primeiro.
+	var g1: Dictionary = Formato.golpe_base("LP")
+	var g3: Dictionary = Formato.golpe_base("LK")
+	g3["nome"] = "Segundo"
+	g3["blocos"] = [Formato.bloco_padrao("comecar_de")]
+	g3["blocos"][0]["golpe"] = g1["nome"]
+	g3["blocos"][0]["quando"] = "sempre"
+	var d = Personagem.new()
+	d.oponente = b
+	d.definir_golpes([g1, g3])
+	d.resetar(200.0, true)
+	var bk := _sem_botoes()
+	bk["LK"] = true
+	d.atualizar(Vector2.ZERO, bk)
+	_checar("golpe de encadeamento não sai sozinho", d.estado != Personagem.Estado.ATACANDO)
+	var bl1 := _sem_botoes()
+	bl1["LP"] = true
+	d.atualizar(Vector2.ZERO, bl1)
+	for i in range(int(g1["startup"]) + 1):
+		d.atualizar(Vector2.ZERO, bk)
+	_checar("encadeia depois do startup do primeiro golpe", str(d.golpe_atual.get("nome", "")) == "Segundo")
