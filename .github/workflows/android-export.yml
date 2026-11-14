@@ -49,7 +49,7 @@ jobs:
 
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           mkdir -p "$HOME/.config/godot"
-          cat > "$HOME/.config/godot/editor_settings-4.2.tres" <<EOF
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
 
           [resource]
@@ -59,14 +59,29 @@ jobs:
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           EOF
+          cp "$HOME/.config/godot/editor_settings-4.tres" "$HOME/.config/godot/editor_settings-4.2.tres"
 
       - name: Conferir configuração
         run: |
-          cat "$HOME/.config/godot/editor_settings-4.2.tres"
+          cat "$HOME/.config/godot/editor_settings-4.tres"
           ls -la "$HOME/.android/debug.keystore"
           ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" || true
 
+      - name: Instalar Python e Pillow
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Converter GIFs do menu em quadros PNG
+        run: |
+          pip install pillow
+          python3 ferramentas/gif_para_frames.py ui
+
       - name: Exportar APK de debug
+        env:
+          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: /home/runner/.android/debug.keystore
+          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
+          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
         run: |
           mkdir -p build/android
           ./godot --headless --verbose --export-debug "Android" build/android/ProjectEmber.apk
