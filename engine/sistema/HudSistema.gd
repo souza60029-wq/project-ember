@@ -147,8 +147,7 @@ func _coletar() -> void:
 	var orcamento: float = 1000.0 / 60.0
 	_gpu = clampf(ms / orcamento * 100.0, 0.0, 100.0) if ms > 0.0 else -1.0
 	_ram_mb = float(OS.get_static_memory_usage()) / 1048576.0
-	_bateria = OS.get_power_percent_left()
-	_carregando = OS.get_power_state() == OS.POWERSTATE_CHARGING
+	_ler_bateria()
 
 
 func _txt_cpu() -> String:
