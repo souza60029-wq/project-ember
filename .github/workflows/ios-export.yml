@@ -22,6 +22,16 @@ jobs:
           unzip -q Godot_v4.2.2-stable_export_templates.tpz
           mv templates/* ~/Library/Application\ Support/Godot/export_templates/4.2.2.stable/
 
+      - name: Instalar Python e Pillow
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Converter GIFs do menu em quadros PNG
+        run: |
+          pip install pillow
+          python3 ferramentas/gif_para_frames.py ui
+
       - name: Exportar projeto Xcode (sem compilar ainda)
         run: |
           mkdir -p build/ios
