@@ -149,6 +149,21 @@ func _coletar() -> void:
 	_ram_mb = float(OS.get_static_memory_usage()) / 1048576.0
 	_ler_bateria()
 
+# O Godot 4 não tem API de bateria (OS.get_power_* era do Godot 3).
+# Android: lê pelo BatteryManager, se o sistema permitir. iOS: sem plugin nativo não dá, fica "--".
+func _ler_bateria() -> void:
+	_bateria = -1
+	_carregando = false
+	if OS.get_name() != "Android" or not Engine.has_singleton("AndroidRuntime"):
+		return
+	var rt: Object = Engine.get_singleton("AndroidRuntime")
+	var atividade: Variant = rt.call("getActivity")
+	if atividade == null:
+		return
+	var gerente: Variant = atividade.call("getSystemService", "batterymanager")
+	if gerente == null:
+		return
+	_bateria = int(gerente.call("getIntProperty", 4)) # BATTERY_PROPERTY_CAPACITY
 
 func _txt_cpu() -> String:
 	return "%d%%" % int(round(_cpu))
