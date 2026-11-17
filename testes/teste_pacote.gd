@@ -19,11 +19,15 @@ func _init() -> void:
 	_testar_edicao()
 	print("Backup BEP1")
 	_testar_backup()
+	print("Arquivo .ember")
+	_testar_arquivo()
 	print("Compilação")
 	_testar_compilacao()
 	_apagar_pasta(PASTA_ORIGEM)
 	_apagar_pasta("user://personagens/" + ID_TESTE + "/")
 	_apagar_pasta("user://personagens/" + ID_TESTE + "_2/")
+	_apagar_pasta("user://personagens/" + ID_TESTE + "_3/")
+	DirAccess.remove_absolute(Pacote.PASTA_EXPORTADOS + ID_TESTE + ".ember")
 	print("Resultado: %d ok, %d falha(s)" % [oks, falhas])
 	quit(1 if falhas > 0 else 0)
 
@@ -79,6 +83,26 @@ func _testar_backup() -> void:
 	_checar("texto inválido recusado", not Pacote.importar("abc")["ok"])
 
 
+func _testar_arquivo() -> void:
+	_preparar_origem()
+	var p: Dictionary = Edicao.novo_personagem("Teste Zip", ID_TESTE)
+	Edicao.inserir_golpe(p, 0)
+	var r: Dictionary = Pacote.exportar_arquivo(p, PASTA_ORIGEM)
+	_checar("exporta .ember", bool(r["ok"]) and FileAccess.file_exists(str(r["caminho"])))
+	if not bool(r["ok"]):
+		return
+	_checar("guarda os arquivos de mídia", int(r["arquivos"]) == 3)
+	var i: Dictionary = Pacote.importar_arquivo(str(r["caminho"]))
+	_checar("importa .ember", bool(i["ok"]))
+	if not bool(i["ok"]):
+		return
+	_checar("id repetido ganha número", str(i["id"]).begins_with(ID_TESTE))
+	var som := FileAccess.get_file_as_bytes(str(i["pasta"]) + "sons/voz_dano_leve.wav")
+	_checar("som volta igual", som == "TESTE-SOM".to_utf8_buffer())
+	_checar("arquivo inválido recusado", not bool(Pacote.importar_arquivo("user://nao_existe.ember")["ok"]))
+	_apagar_pasta(str(i["pasta"]))
+
+
 func _testar_compilacao() -> void:
 	for caminho in [
 		"res://engine/menu/Menu.gd",
@@ -93,6 +117,8 @@ func _testar_compilacao() -> void:
 		"res://engine/config/Configuracoes.gd",
 		"res://engine/sistema/HudSistema.gd",
 		"res://engine/editor/EditorBlocos.gd",
+		"res://engine/debug/LayoutDebug.gd",
+		"res://engine/debug/DebugCamadas.gd",
 		"res://engine/editor/NavegadorArquivos.gd",
 		"res://engine/editor/EditorPersonagem.gd",
 		"res://engine/luta/Luta.gd",

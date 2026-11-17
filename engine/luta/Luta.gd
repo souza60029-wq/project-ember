@@ -13,7 +13,7 @@ const PERSONAGEM_INICIAL := "res://personagens/boneco_treino_1/personagem.json"
 const VIEW_W := 960.0
 const VIEW_H := 540.0
 const FRAMES_KO := 150
-const TECLAS := ["LP", "LK", "HP", "HK", "BO", "ESQ"]
+const TECLAS := ["LP", "LK", "HP", "HK", "BO", "ESQ", "REVP", "REVK"]
 
 const DPAD_C := Vector2(120.0, 430.0)
 const DPAD_R := 80.0
@@ -25,7 +25,10 @@ const BOTOES := {
 	"HK": Vector2(780.0, 410.0),
 	"LK": Vector2(720.0, 490.0),
 	"ESQ": Vector2(860.0, 470.0),
+	"REVP": Vector2(600.0, 490.0),
+	"REVK": Vector2(900.0, 400.0),
 }
+const RASTRO_SEG := 0.25
 
 const RECT_RESET := Rect2(260.0, 8.0, 120.0, 34.0)
 
@@ -43,6 +46,8 @@ var p2 = Personagem.new()
 var nome_p1: String = "Sem personagem"
 var nome_p2: String = "Sem personagem"
 var projeteis: Array = []
+var rastros: Array = []
+var _pre: Array = [{}, {}]
 var dados1: Dictionary = {}
 var dados2: Dictionary = {}
 var pasta1: String = ""
@@ -70,6 +75,7 @@ func _process(_delta: float) -> void:
 	queue_redraw()
 
 func _physics_process(_delta: float) -> void:
+	_pre = [_foto(p1, dados1, pasta1), _foto(p2, dados2, pasta2)]
 	_passo_jogador(p1, (_dir_pad(0) + _vec_dpad()).limit_length(1.0), _entrada_p1(), mask1)
 	_passo_jogador(p2, _dir_pad(1), _entrada_pad(1, 2), mask2)
 	_resolver_combate(p1, p2)
@@ -78,6 +84,7 @@ func _physics_process(_delta: float) -> void:
 	_tocar_eventos(p1, id1)
 	_tocar_eventos(p2, id2)
 	_passo_projeteis()
+	_passo_rastros()
 	_expirar_combos()
 	if p1.estado == Personagem.Estado.KO or p2.estado == Personagem.Estado.KO:
 		ko_t += 1
@@ -164,7 +171,9 @@ func _tocar_eventos(p, id: String) -> void:
 		if tipo == "projetil":
 			_criar_projetil(p, ev["bloco"], g)
 			continue
-		if audio == null:
+		if tipo == "rev":
+			rastros.append({"foto": _pre[0 if p == p1 else 1], "t": RASTRO_SEG})
+		if audio == null or not _sons_ligados():
 			continue
 		match tipo:
 			"golpe":
@@ -175,8 +184,35 @@ func _tocar_eventos(p, id: String) -> void:
 				audio.tocar("impacto_forte" if int(g["forca"]) >= 2 else "impacto_leve", id)
 			"bloqueio":
 				audio.tocar("bloqueio", id)
-			"parry", "guarda_quebrada", "esquiva", "pulo":
+			"parry", "guarda_quebrada", "esquiva", "pulo", "rev":
 				audio.tocar(tipo, id)
+
+# Rastro do REV: o último sprite antes do REV fica em vermelho e some em 0,25 s.
+func _foto(p, dados: Dictionary, pasta: String) -> Dictionary:
+	return {"tex": _textura_atual(p, dados, pasta), "pos": p.pos, "direita": p.direita, "rect": p.corpo_rect()}
+
+func _passo_rastros() -> void:
+	var vivos: Array = []
+	for r in rastros:
+		var d: Dictionary = r
+		d["t"] = float(d["t"]) - DT
+		if float(d["t"]) > 0.0:
+			vivos.append(d)
+	rastros = vivos
+
+func _desenhar_rastros() -> void:
+	for r in rastros:
+		var d: Dictionary = r
+		var f: Dictionary = d["foto"]
+		var a: float = clampf(float(d["t"]) / RASTRO_SEG, 0.0, 1.0) * 0.7
+		var tex: Texture2D = f["tex"]
+		if tex != null:
+			Sprites.desenhar(self, tex, f["pos"], bool(f["direita"]), Color(1.0, 0.2, 0.2, a))
+		else:
+			draw_rect(f["rect"], Color(1.0, 0.2, 0.2, a * 0.7))
+
+func _sons_ligados() -> bool:
+	return not has_node("/root/Config") or bool(get_node("/root/Config").sons_luta_ligados)
 
 # ---------- Magias (projéteis lançados por blocos) ----------
 
@@ -304,28 +340,44 @@ func _dir_pad(dev: int) -> Vector2:
 func _entrada_pad(dev: int, jogador: int) -> Dictionary:
 	if has_node("/root/Config"):
 		return get_node("/root/Config").entrada_luta(dev, jogador)
-	return {"LP": false, "LK": false, "HP": false, "HK": false, "BO": false, "ESQ": false}
+	return {"LP": false, "LK": false, "HP": false, "HK": false, "BO": false, "ESQ": false, "REVP": false, "REVK": false}
 
 func _entrada_p1() -> Dictionary:
 	var pad := _entrada_pad(0, 1)
 	var tocado := _botoes_tocados()
 	var r := {}
 	for k in TECLAS:
-		r[k] = bool(pad[k]) or tocado.has(k)
+		r[k] = bool(pad.get(k, false)) or tocado.has(k)
 	return r
 
 # Combos de toque: LP+LK = ESQ (esquiva), HP+HK = BO (blow off).
+# Também: LP+HP = REV de soco e LK+HK = REV de chute (os botões REV na tela fazem o mesmo).
 func _logico(raw: Dictionary) -> Dictionary:
-	var roll_c: bool = bool(raw["LP"]) and bool(raw["LK"])
-	var cd_c: bool = bool(raw["HP"]) and bool(raw["HK"])
-	return {
-		"LP": bool(raw["LP"]) and not roll_c,
-		"LK": bool(raw["LK"]) and not roll_c,
-		"HP": bool(raw["HP"]) and not cd_c,
-		"HK": bool(raw["HK"]) and not cd_c,
-		"BO": bool(raw["BO"]) or cd_c,
-		"ESQ": bool(raw["ESQ"]) or roll_c,
-	}
+	var lp: bool = bool(raw["LP"])
+	var lk: bool = bool(raw["LK"])
+	var hp: bool = bool(raw["HP"])
+	var hk: bool = bool(raw["HK"])
+	var bo: bool = bool(raw["BO"])
+	var esq: bool = bool(raw["ESQ"])
+	var revp: bool = bool(raw["REVP"])
+	var revk: bool = bool(raw["REVK"])
+	if hp and hk:
+		bo = true
+		hp = false
+		hk = false
+	if lp and lk:
+		esq = true
+		lp = false
+		lk = false
+	if lp and hp:
+		revp = true
+		lp = false
+		hp = false
+	if lk and hk:
+		revk = true
+		lk = false
+		hk = false
+	return {"LP": lp, "LK": lk, "HP": hp, "HK": hk, "BO": bo, "ESQ": esq, "REVP": revp, "REVK": revk}
 
 # Botão segurado não repete golpe. Ao iniciar um golpe, ou ao sair de um
 # estado livre e voltar a um livre, os botões ainda segurados ficam mascarados
@@ -365,6 +417,7 @@ func _reiniciar_luta() -> void:
 	mask2 = _mascara_vazia()
 	ko_t = 0
 	projeteis.clear()
+	rastros.clear()
 
 func _resolver_combate(atk, dfn) -> void:
 	if not atk.hitbox_ativa() or atk.golpe_acertou:
@@ -452,6 +505,7 @@ func _desenhar_luta() -> void:
 	draw_rect(Rect2(0.0, 0.0, VIEW_W, VIEW_H), Color(0.09, 0.09, 0.12))
 	draw_rect(Rect2(0.0, Personagem.CHAO_Y, VIEW_W, VIEW_H - Personagem.CHAO_Y), Color(0.18, 0.16, 0.2))
 	draw_line(Vector2(0.0, Personagem.CHAO_Y), Vector2(VIEW_W, Personagem.CHAO_Y), Color(0.5, 0.5, 0.6), 2.0)
+	_desenhar_rastros()
 	_desenhar_personagem(p1, Color(0.3, 0.6, 1.0), dados1, pasta1)
 	_desenhar_personagem(p2, Color(1.0, 0.45, 0.2), dados2, pasta2)
 	_desenhar_projeteis()
@@ -493,8 +547,10 @@ func _textura_atual(p, dados: Dictionary, pasta: String) -> Texture2D:
 func _desenhar_personagem(p, base: Color, dados: Dictionary, pasta: String) -> void:
 	var tex: Texture2D = _textura_atual(p, dados, pasta)
 	var alfa: float = 0.55 if (p.estado == Personagem.Estado.ESQUIVANDO or p.estado == Personagem.Estado.LEVANTANDO) else 1.0
+	# Flatline: o personagem inteiro pisca vermelho.
+	var pisca: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() / 70.0) if p.flatline else 0.0
 	if tex != null:
-		Sprites.desenhar(self, tex, p.pos, p.direita, Color(1.0, 1.0, 1.0, alfa))
+		Sprites.desenhar(self, tex, p.pos, p.direita, Color(1.0, 1.0 - 0.75 * pisca, 1.0 - 0.75 * pisca, alfa))
 		return
 	# Sem sprite: caixa de cor no lugar do personagem.
 	var est: int = p.estado
@@ -513,6 +569,8 @@ func _desenhar_personagem(p, base: Color, dados: Dictionary, pasta: String) -> v
 		cor = Color(0.9, 0.4, 0.9)
 	elif alfa < 1.0:
 		cor = Color(base.r, base.g, base.b, alfa)
+	if pisca > 0.0:
+		cor = cor.lerp(Color(1.0, 0.1, 0.1), pisca)
 	var c: Rect2 = p.corpo_rect()
 	draw_rect(c, cor)
 	draw_rect(c, Color(1.0, 1.0, 1.0, 0.8), false, 2.0)
@@ -543,6 +601,8 @@ func _desenhar_hud() -> void:
 	_barra_energia(Rect2(640.0, 82.0, 300.0, 8.0), p2, true)
 	_barra_guarda(Rect2(20.0, 94.0, 300.0, 6.0), p1, false)
 	_barra_guarda(Rect2(640.0, 94.0, 300.0, 6.0), p2, true)
+	_barra_pulse(Rect2(20.0, 104.0, 300.0, 6.0), p1, false)
+	_barra_pulse(Rect2(640.0, 104.0, 300.0, 6.0), p2, true)
 	_avisos(p1, 20.0, false)
 	_avisos(p2, 530.0, true)
 	_texto(nome_p1, Vector2(20.0, 54.0), 14)
@@ -605,6 +665,22 @@ func _barra_guarda(r: Rect2, p, da_direita: bool) -> void:
 	var quebrada: bool = p.estado == Personagem.Estado.GUARDA_QUEBRADA
 	draw_rect(Rect2(x, r.position.y, w, r.size.y), Color(1.0, 0.3, 0.3) if quebrada else Color(0.4, 0.8, 1.0))
 	draw_rect(r, Color(1.0, 1.0, 1.0, 0.5), false, 1.0)
+
+# Barra PULSE (REV). Cheia vira FLATLINE.
+func _barra_pulse(r: Rect2, p, da_direita: bool) -> void:
+	draw_rect(r, Color(0.12, 0.12, 0.15))
+	var prop: float = clampf(float(p.pulse) / 100.0, 0.0, 1.0)
+	var w: float = r.size.x * prop
+	var x: float = r.position.x + (r.size.x - w if da_direita else 0.0)
+	var cor: Color = Color(0.2, 0.9, 0.8).lerp(Color(1.0, 0.2, 0.2), prop)
+	draw_rect(Rect2(x, r.position.y, w, r.size.y), cor)
+	draw_rect(r, Color(1.0, 1.0, 1.0, 0.5), false, 1.0)
+	var rotulo: String = "FLATLINE" if p.flatline else "PULSE"
+	var cor_t: Color = Color(1.0, 0.3, 0.3) if p.flatline else Color(0.7, 0.9, 0.9)
+	if da_direita:
+		_texto_dir(rotulo, Vector2(r.position.x, r.end.y + 12.0), r.size.x, 11, cor_t)
+	else:
+		_texto(rotulo, Vector2(r.position.x, r.end.y + 12.0), 11, cor_t)
 
 func _avisos(p, x: float, da_direita: bool) -> void:
 	var texto: String = ""

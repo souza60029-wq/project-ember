@@ -22,6 +22,7 @@ func _init() -> void:
 	_testar_tempo_sprites()
 	_testar_sistema()
 	_testar_blocos()
+	_testar_rev()
 	_testar_eventos()
 	print("Resultado: %d ok, %d falha(s)" % [passou, falhas])
 	quit(1 if falhas > 0 else 0)
@@ -360,3 +361,45 @@ func _testar_blocos() -> void:
 	for i in range(int(g1["startup"]) + 1):
 		d.atualizar(Vector2.ZERO, bk)
 	_checar("encadeia depois do startup do primeiro golpe", str(d.golpe_atual.get("nome", "")) == "Segundo")
+
+
+func _testar_rev() -> void:
+	print("REV, Pulse e Flatline")
+	var golpes: Array = [Formato.golpe_base("LP"), Formato.golpe_base("HP"), Formato.golpe_base("HK")]
+	var alvo = Personagem.new()
+	alvo.definir_golpes(golpes)
+	alvo.resetar(600.0, false)
+	var a = Personagem.new()
+	a.oponente = alvo
+	a.definir_golpes(golpes)
+	a.resetar(200.0, true)
+	var bt := _sem_botoes()
+	bt["REVP"] = true
+	a.atualizar(Vector2.ZERO, bt)
+	_checar("REV começa o golpe forte", a.estado == Personagem.Estado.ATACANDO and str(a.golpe_atual["botao"]) == "HP")
+	_checar("REV pula a parte lenta (startup)", a.tempo >= int(a.golpe_atual["startup"]))
+	_checar("REV enche o Pulse", absf(a.pulse - Personagem.PULSE_POR_USO) < 0.01)
+
+	var b = Personagem.new()
+	b.oponente = alvo
+	b.definir_golpes(golpes)
+	b.resetar(200.0, true)
+	for i in range(4):
+		b.estado = Personagem.Estado.PARADO
+		b.golpe_atual = {}
+		b._tentar_rev("K")
+	_checar("Pulse cheio entra em Flatline", b.flatline and b.pulse >= 100.0)
+	_checar("Flatline bloqueia o REV", not b._tentar_rev("P"))
+	_checar("Flatline deixa o personagem mais lento", b._mult_vel() < 1.0)
+	var antes: float = b.guarda
+	b.estado = Personagem.Estado.PARADO
+	b.receber_bloqueio(Formato.golpe_base("LP"))
+	var normal: float = Personagem.GUARDA_CUSTO[1]
+	_checar("Flatline gasta a defesa 15% mais rápido", absf((antes - b.guarda) - normal * Personagem.FLATLINE_GUARDA) < 0.01)
+	var sem := _sem_botoes()
+	for i in range(Personagem.PULSE_ESPERA):
+		b.atualizar(Vector2.ZERO, sem)
+	_checar("Pulse espera 2 s antes de esvaziar", b.pulse >= 99.0)
+	for i in range(320):
+		b.atualizar(Vector2.ZERO, sem)
+	_checar("Pulse esvazia e sai do Flatline", b.pulse <= 0.01 and not b.flatline)

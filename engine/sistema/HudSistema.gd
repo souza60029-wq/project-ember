@@ -12,7 +12,41 @@ const Sprites = preload("res://engine/nucleo/Sprites.gd")
 
 const ICONES := "res://engine/sistema/icones/"
 const INTERVALO := 1.0
-const TAM_RETANGULO := Vector2(430.0, 62.0)
+const ALTURA_RETANGULO: float = 40.0
+
+# iPhones pelo identificador interno (ex.: iPhone14,2): nome comercial.
+const IPHONES := {
+	"iPhone8,1": "iPhone 6s", "iPhone8,2": "iPhone 6s Plus", "iPhone8,4": "iPhone SE (1a gen)",
+	"iPhone9,1": "iPhone 7", "iPhone9,3": "iPhone 7", "iPhone9,2": "iPhone 7 Plus", "iPhone9,4": "iPhone 7 Plus",
+	"iPhone10,1": "iPhone 8", "iPhone10,4": "iPhone 8", "iPhone10,2": "iPhone 8 Plus", "iPhone10,5": "iPhone 8 Plus",
+	"iPhone10,3": "iPhone X", "iPhone10,6": "iPhone X",
+	"iPhone11,2": "iPhone XS", "iPhone11,4": "iPhone XS Max", "iPhone11,6": "iPhone XS Max", "iPhone11,8": "iPhone XR",
+	"iPhone12,1": "iPhone 11", "iPhone12,3": "iPhone 11 Pro", "iPhone12,5": "iPhone 11 Pro Max", "iPhone12,8": "iPhone SE (2a gen)",
+	"iPhone13,1": "iPhone 12 mini", "iPhone13,2": "iPhone 12", "iPhone13,3": "iPhone 12 Pro", "iPhone13,4": "iPhone 12 Pro Max",
+	"iPhone14,4": "iPhone 13 mini", "iPhone14,5": "iPhone 13", "iPhone14,2": "iPhone 13 Pro", "iPhone14,3": "iPhone 13 Pro Max",
+	"iPhone14,6": "iPhone SE (3a gen)", "iPhone14,7": "iPhone 14", "iPhone14,8": "iPhone 14 Plus",
+	"iPhone15,2": "iPhone 14 Pro", "iPhone15,3": "iPhone 14 Pro Max", "iPhone15,4": "iPhone 15", "iPhone15,5": "iPhone 15 Plus",
+	"iPhone16,1": "iPhone 15 Pro", "iPhone16,2": "iPhone 15 Pro Max",
+	"iPhone17,1": "iPhone 16 Pro", "iPhone17,2": "iPhone 16 Pro Max", "iPhone17,3": "iPhone 16", "iPhone17,4": "iPhone 16 Plus", "iPhone17,5": "iPhone 16e",
+	"iPhone18,1": "iPhone 17 Pro", "iPhone18,2": "iPhone 17 Pro Max", "iPhone18,3": "iPhone 17", "iPhone18,4": "iPhone Air",
+}
+# Resolução da tela (maior lado, menor lado) -> [descrição, moldura]. Usada quando o identificador não é conhecido.
+const RESOLUCOES := {
+	Vector2i(1136, 640): ["iPhone SE / 5s", "home"],
+	Vector2i(1334, 750): ["iPhone 6/7/8/SE", "home"],
+	Vector2i(1920, 1080): ["iPhone Plus (6/7/8)", "home"],
+	Vector2i(2436, 1125): ["iPhone X/XS/11 Pro", "notch"],
+	Vector2i(2688, 1242): ["iPhone XS Max/11 Pro Max", "notch"],
+	Vector2i(1792, 828): ["iPhone XR/11", "notch"],
+	Vector2i(2340, 1080): ["iPhone 12/13 mini", "notch"],
+	Vector2i(2532, 1170): ["iPhone 12/13/14", "notch"],
+	Vector2i(2778, 1284): ["iPhone 12/13 Pro Max, 14 Plus", "notch"],
+	Vector2i(2556, 1179): ["iPhone 14 Pro/15/16", "island"],
+	Vector2i(2796, 1290): ["iPhone 14 Pro Max/15 Plus/16 Plus", "island"],
+	Vector2i(2622, 1206): ["iPhone 16 Pro/17", "island"],
+	Vector2i(2868, 1320): ["iPhone 16 Pro Max", "island"],
+	Vector2i(2736, 1260): ["iPhone Air", "island"],
+}
 const TAM_QUADRADO := Vector2(210.0, 214.0)
 const COR_FUNDO := Color(0.04, 0.05, 0.1, 0.84)
 const COR_BORDA := Color(1.0, 0.55, 0.2, 0.9)
@@ -62,7 +96,7 @@ func atualizar_modo() -> void:
 	set_process(visible)
 	if not visible:
 		return
-	_painel.size = TAM_QUADRADO if modo == "quadrado" else TAM_RETANGULO
+	_painel.size = TAM_QUADRADO if modo == "quadrado" else Vector2(430.0, ALTURA_RETANGULO)
 	_painel.position = _limitar(_config().hud_pos)
 	_coletar()
 	_painel.queue_redraw()
@@ -84,14 +118,16 @@ func _process(delta: float) -> void:
 
 func _ler_aparelho() -> void:
 	var os_nome: String = OS.get_name()
-	_aparelho = OS.get_model_name()
+	var bruto: String = OS.get_model_name()
+	_aparelho = bruto
 	if _aparelho == "" or _aparelho == "GenericDevice":
 		_aparelho = os_nome
 	_gpu_nome = RenderingServer.get_video_adapter_name()
 	var g: String = _gpu_nome.to_lower()
 	if os_nome == "iOS":
 		_soc = "apple"
-		_iphone = _tipo_iphone(OS.get_model_name())
+		_iphone = _tipo_iphone(bruto)
+		_aparelho = _nome_iphone(bruto)
 	elif os_nome == "Android":
 		if g.contains("adreno"):
 			_soc = "snapdragon"
@@ -105,8 +141,26 @@ func _ler_aparelho() -> void:
 		_soc = "generico"
 
 
+# Resolução da tela na forma (maior lado, menor lado).
+func _resolucao() -> Vector2i:
+	var t: Vector2i = DisplayServer.screen_get_size()
+	return Vector2i(maxi(t.x, t.y), mini(t.x, t.y))
+
+
+# Nome do iPhone: pelo identificador (iPhone10,4); se não for conhecido, pela resolução da tela.
+func _nome_iphone(bruto: String) -> String:
+	if IPHONES.has(bruto):
+		return str(IPHONES[bruto])
+	var res: Vector2i = _resolucao()
+	if RESOLUCOES.has(res):
+		return str((RESOLUCOES[res] as Array)[0])
+	return bruto if bruto.begins_with("iPhone") else "iPhone"
+
+
 # "home" (botão home), "notch" (entalhe) ou "island" (Dynamic Island).
 # Pelo identificador do modelo (ex.: iPhone14,2); se não der, pela área segura da tela.
+# "home" (botão home), "notch" (entalhe) ou "island" (Dynamic Island).
+# Pelo identificador do modelo; se não for conhecido, pela resolução da tela; por último, pela área segura.
 func _tipo_iphone(modelo: String) -> String:
 	if modelo.begins_with("iPhone") and modelo.contains(","):
 		var partes: PackedStringArray = modelo.trim_prefix("iPhone").split(",")
@@ -127,6 +181,9 @@ func _tipo_iphone(modelo: String) -> String:
 		if maior == 17 and menor == 5:
 			return "notch"
 		return "island"
+	var res: Vector2i = _resolucao()
+	if RESOLUCOES.has(res):
+		return str((RESOLUCOES[res] as Array)[1])
 	var tela: Vector2i = DisplayServer.screen_get_size()
 	var seg: Rect2i = DisplayServer.get_display_safe_area()
 	var esc: float = maxf(1.0, DisplayServer.screen_get_scale())
@@ -148,6 +205,8 @@ func _coletar() -> void:
 	_gpu = clampf(ms / orcamento * 100.0, 0.0, 100.0) if ms > 0.0 else -1.0
 	_ram_mb = float(OS.get_static_memory_usage()) / 1048576.0
 	_ler_bateria()
+	_ajustar_retangulo()
+
 
 # O Godot 4 não tem API de bateria (OS.get_power_* era do Godot 3).
 # Android: lê pelo BatteryManager, se o sistema permitir. iOS: sem plugin nativo não dá, fica "--".
@@ -164,6 +223,7 @@ func _ler_bateria() -> void:
 	if gerente == null:
 		return
 	_bateria = int(gerente.call("getIntProperty", 4)) # BATTERY_PROPERTY_CAPACITY
+
 
 func _txt_cpu() -> String:
 	return "%d%%" % int(round(_cpu))
@@ -228,10 +288,34 @@ func _texto(p: Vector2, s: String, tam: int, cor: Color, largura: float = -1.0) 
 	_painel.draw_string(ThemeDB.fallback_font, p, s, HORIZONTAL_ALIGNMENT_LEFT, largura, tam, cor)
 
 
+# Modo retângulo: tudo na mesma linha (aparelho, GPU, FPS, CPU, GPU, RAM, bateria).
+func _linha_retangulo() -> String:
+	return "%s  |  %s  |  FPS %d  |  CPU %s  |  GPU %s  |  RAM %s  |  BAT %s" % [_aparelho, _gpu_nome, _fps, _txt_cpu(), _txt_gpu(), _txt_ram(), _txt_bat()]
+
+
+func _tam_fonte_retangulo() -> int:
+	var tela: float = get_viewport().get_visible_rect().size.x - 16.0
+	for tam in [15, 13, 11, 9]:
+		if _largura(_linha_retangulo(), int(tam)) + 36.0 <= tela:
+			return int(tam)
+	return 9
+
+
+func _largura(t: String, tam: int) -> float:
+	return ThemeDB.fallback_font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, tam).x
+
+
+# A largura do retângulo acompanha o texto (que cabe numa linha só).
+func _ajustar_retangulo() -> void:
+	if str(_config().hud_modo) != "retangulo":
+		return
+	_painel.size = Vector2(_largura(_linha_retangulo(), _tam_fonte_retangulo()) + 36.0, ALTURA_RETANGULO)
+	_painel.position = _limitar(_painel.position)
+
+
 func _desenhar_retangulo() -> void:
-	_texto(Vector2(18.0, 24.0), "%s  |  %s" % [_aparelho, _gpu_nome], 14, COR_TEXTO, TAM_RETANGULO.x - 36.0)
-	var linha: String = "FPS %d    CPU %s    GPU %s    RAM %s    BAT %s" % [_fps, _txt_cpu(), _txt_gpu(), _txt_ram(), _txt_bat()]
-	_texto(Vector2(18.0, 48.0), linha, 14, COR_SUAVE, TAM_RETANGULO.x - 36.0)
+	var tam: int = _tam_fonte_retangulo()
+	_texto(Vector2(18.0, ALTURA_RETANGULO * 0.5 + float(tam) * 0.36), _linha_retangulo(), tam, COR_TEXTO)
 
 
 func _desenhar_quadrado() -> void:

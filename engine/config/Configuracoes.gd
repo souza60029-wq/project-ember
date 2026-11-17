@@ -13,7 +13,9 @@ const Glifos = preload("res://engine/nucleo/Glifos.gd")
 
 const VIEW_W := 960.0
 const VIEW_H := 540.0
-const CATS := ["cfg_jogo", "cfg_tela", "cfg_controles"]
+const CATS := ["cfg_jogo", "cfg_tela", "cfg_controles", "cfg_musica"]
+const VIS_SUB: int = 9
+const MODULO_DEBUG := "res://engine/debug/DebugCamadas.gd"
 const R_CATS := Rect2(28.0, 104.0, 220.0, 300.0)
 const R_PAINEL := Rect2(268.0, 104.0, 664.0, 372.0)
 const ALT_CAT := 58.0
@@ -28,6 +30,9 @@ const COR_SUAVE := Color(0.62, 0.65, 0.8)
 var _cat: int = 0
 var _col: int = 0 # 0 = categorias, 1 = opções
 var _linha: int = 0
+var _off: int = 0
+var _faixas: Array = []
+var _acum_drag: float = 0.0
 var _editando: bool = false # aura amarela: só então esquerda/direita trocam a função
 var _sub: int = 0 # 0 = lista; 1 e 2 = mapa de botões do jogador 1 / 2
 var _eixo_estado := {}
@@ -72,6 +77,11 @@ func _lig(b: bool) -> String:
 func _linhas() -> Array:
 	var cfg: Variant = _config()
 	var r: Array = []
+	if _sub == 3:
+		for f in _faixas:
+			var banida: bool = bool(cfg.musica_banida(str(f)))
+			r.append({"id": "t:" + str(f), "tipo": "faixa", "rotulo": str(f).get_file(), "valor": "banida" if banida else "toca", "banida": banida})
+		return r
 	if _sub > 0:
 		var m: Dictionary = cfg.mapa(_sub)
 		for b in cfg.BOTOES_FISICOS:
@@ -82,6 +92,9 @@ func _linhas() -> Array:
 		0:
 			r.append({"id": "idioma", "tipo": "escolha", "rotulo": _t("opt_idioma"), "valor": _t("idioma_" + str(cfg.idioma))})
 			r.append({"id": "debug", "tipo": "escolha", "rotulo": _t("opt_debug"), "valor": _lig(bool(cfg.debug_hitboxes))})
+			# Ferramenta de debug (aparece só se a pasta engine/debug/ existir; apague-a na versão final).
+			if ResourceLoader.exists(MODULO_DEBUG):
+				r.append({"id": "camadas", "tipo": "acao", "rotulo": _t("opt_camadas_debug"), "valor": ""})
 		1:
 			r.append({"id": "rotacao", "tipo": "escolha", "rotulo": _t("opt_rotacao"), "valor": _t("rot_" + str(cfg.rotacao))})
 			r.append({"id": "hud", "tipo": "escolha", "rotulo": _t("opt_hud"), "valor": _t("hud_" + str(cfg.hud_modo))})
@@ -91,6 +104,11 @@ func _linhas() -> Array:
 			r.append({"id": "info", "tipo": "info", "rotulo": _t("ctrl_nome"), "valor": nome})
 			r.append({"id": "mapa1", "tipo": "acao", "rotulo": _t("opt_mapa_p1"), "valor": ""})
 			r.append({"id": "mapa2", "tipo": "acao", "rotulo": _t("opt_mapa_p2"), "valor": ""})
+		3:
+			r.append({"id": "mus_menu", "tipo": "escolha", "rotulo": _t("opt_mus_menu"), "valor": _lig(bool(cfg.musica_menu_ligada))})
+			r.append({"id": "mus_luta", "tipo": "escolha", "rotulo": _t("opt_mus_luta"), "valor": _lig(bool(cfg.musica_luta_ligada))})
+			r.append({"id": "sons_luta", "tipo": "escolha", "rotulo": _t("opt_sons_luta"), "valor": _lig(bool(cfg.sons_luta_ligados))})
+			r.append({"id": "mus_banidas", "tipo": "acao", "rotulo": _t("opt_mus_banidas"), "valor": ""})
 	return r
 
 
@@ -138,6 +156,12 @@ func _mudar(d: int, dev: int) -> void:
 			cfg.definir_hud(_ciclo(cfg.HUD_MODOS, str(cfg.hud_modo), d))
 		"modo":
 			cfg.definir_modo(_ciclo(cfg.MODOS, str(cfg.modo_escolhido), d))
+		"mus_menu":
+			cfg.definir_audio("menu", not bool(cfg.musica_menu_ligada))
+		"mus_luta":
+			cfg.definir_audio("luta", not bool(cfg.musica_luta_ligada))
+		"sons_luta":
+			cfg.definir_audio("sons", not bool(cfg.sons_luta_ligados))
 		_:
 			return
 	_som("menu_mover")
@@ -151,6 +175,9 @@ func _acionar(dev: int) -> void:
 	match str(it["tipo"]):
 		"escolha":
 			_mudar(1, dev)
+		"faixa":
+			_config().alternar_musica_banida(str(it["id"]).substr(2))
+			_som("menu_confirma")
 		"mapa":
 			# Clicar liga/desliga a aura amarela. Só com a aura dá para trocar a função.
 			if _editando:
@@ -168,6 +195,16 @@ func _acionar(dev: int) -> void:
 					_sub = 2
 					_linha = 0
 					_som("menu_confirma")
+				"mus_banidas":
+					_faixas = get_node("/root/Audio").faixas_de_luta()
+					_sub = 3
+					_linha = 0
+					_off = 0
+					_som("menu_confirma")
+				"camadas":
+					fechado.emit()
+					queue_free()
+					_config().camadas_debug_pedido.emit.call_deferred()
 				"restaurar":
 					if _pode_editar_mapa(dev):
 						_config().restaurar_mapa(_sub)
@@ -181,6 +218,7 @@ func _voltar() -> void:
 	elif _sub > 0:
 		_linha = 2 if _sub == 1 else 3
 		_sub = 0
+		_off = 0
 	elif _col == 1:
 		_col = 0
 	else:
@@ -202,6 +240,11 @@ func _mover(d: int) -> void:
 		var novo2: int = clampi(_linha + d, 0, n - 1)
 		if novo2 != _linha:
 			_linha = novo2
+			if _sub > 0:
+				if _linha < _off:
+					_off = _linha
+				elif _linha >= _off + VIS_SUB:
+					_off = _linha - VIS_SUB + 1
 			_som("menu_mover")
 
 
@@ -211,6 +254,18 @@ func _unhandled_input(ev: InputEvent) -> void:
 	var st := ev as InputEventScreenTouch
 	if st != null and st.pressed:
 		_tocar(st.position)
+		get_viewport().set_input_as_handled()
+		return
+	var dr := ev as InputEventScreenDrag
+	if dr != null and _sub == 3:
+		_acum_drag += dr.relative.y
+		var passo: float = _alt_linha()
+		while _acum_drag <= -passo:
+			_acum_drag += passo
+			_off = clampi(_off + 1, 0, maxi(0, _linhas().size() - VIS_SUB))
+		while _acum_drag >= passo:
+			_acum_drag -= passo
+			_off = clampi(_off - 1, 0, maxi(0, _linhas().size() - VIS_SUB))
 		get_viewport().set_input_as_handled()
 		return
 	var bt := ev as InputEventJoypadButton
@@ -289,7 +344,7 @@ func _alt_linha() -> float:
 
 func _rect_linha(j: int) -> Rect2:
 	var alt: float = _alt_linha()
-	return Rect2(R_PAINEL.position.x + 12.0, R_PAINEL.position.y + 52.0 + float(j) * alt, R_PAINEL.size.x - 24.0, alt - 4.0)
+	return Rect2(R_PAINEL.position.x + 12.0, R_PAINEL.position.y + 52.0 + float(j - _off) * alt, R_PAINEL.size.x - 24.0, alt - 4.0)
 
 
 func _tocar(p: Vector2) -> void:
@@ -307,6 +362,8 @@ func _tocar(p: Vector2) -> void:
 				return
 	var n: int = _linhas().size()
 	for j in range(n):
+		if _sub > 0 and (j < _off or j >= _off + VIS_SUB):
+			continue
 		var r: Rect2 = _rect_linha(j)
 		if r.has_point(p):
 			var it: Dictionary = _linhas()[j]
@@ -379,9 +436,11 @@ func _painel() -> void:
 	draw_rect(R_PAINEL, Color(1, 1, 1, 0.12), false, 1.0)
 	var titulo: String = _t(str(CATS[_cat]))
 	if _sub > 0:
-		titulo = _t("mapa_titulo_p%d" % _sub)
+		titulo = _t("mapa_titulo_p%d" % _sub) if _sub < 3 else _t("mus_banidas_titulo")
 	draw_string(fonte, Vector2(R_PAINEL.position.x + 20.0, R_PAINEL.position.y + 34.0), titulo, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 22, COR_DESTAQUE)
-	if _sub > 0:
+	if _sub == 3:
+		draw_string(fonte, Vector2(R_PAINEL.position.x + 20.0, R_PAINEL.position.y + 48.0), _t("mus_banidas_dica") if not _linhas().is_empty() else _t("mus_banidas_vazio"), HORIZONTAL_ALIGNMENT_LEFT, R_PAINEL.size.x - 40.0, 12, COR_SUAVE)
+	elif _sub > 0:
 		var dica: String = _t("mapa_dica")
 		if _sub == 2:
 			dica = _t("mapa_p2_aviso") if Input.get_connected_joypads().size() >= 2 else _t("mapa_p2_sem")
@@ -389,6 +448,8 @@ func _painel() -> void:
 	var l: Array = _linhas()
 	var ps: bool = bool(_config().controle_ps())
 	for j in range(l.size()):
+		if _sub > 0 and (j < _off or j >= _off + VIS_SUB):
+			continue
 		var it: Dictionary = l[j]
 		var r: Rect2 = _rect_linha(j)
 		var foco: bool = _col == 1 and j == _linha
@@ -402,7 +463,16 @@ func _painel() -> void:
 			draw_rect(r, COR_DESTAQUE, false, 2.0)
 		var cy: float = r.position.y + r.size.y * 0.5
 		var tipo: String = str(it["tipo"])
-		if tipo == "mapa":
+		if tipo == "faixa":
+			var caixa := Rect2(r.position.x + 14.0, cy - 11.0, 22.0, 22.0)
+			draw_rect(caixa, Color(1, 1, 1, 0.1))
+			draw_rect(caixa, COR_SUAVE, false, 2.0)
+			if bool(it["banida"]):
+				draw_line(caixa.position + Vector2(4, 4), caixa.end - Vector2(4, 4), Color(1.0, 0.4, 0.4), 3.0)
+				draw_line(Vector2(caixa.end.x - 4.0, caixa.position.y + 4.0), Vector2(caixa.position.x + 4.0, caixa.end.y - 4.0), Color(1.0, 0.4, 0.4), 3.0)
+			draw_string(fonte, Vector2(r.position.x + 48.0, cy + 6.0), str(it["rotulo"]), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 190.0, 16, COR_TEXTO)
+			draw_string(fonte, Vector2(r.end.x - 130.0, cy + 6.0), "não toca" if bool(it["banida"]) else "toca", HORIZONTAL_ALIGNMENT_RIGHT, 118.0, 14, Color(1.0, 0.5, 0.5) if bool(it["banida"]) else COR_SUAVE)
+		elif tipo == "mapa":
 			Glifos.desenhar(self, str(it["botao"]), Vector2(r.position.x + 40.0, cy), 13.0, ps)
 			draw_string(fonte, Vector2(r.position.x + 76.0, cy + 7.0), str(it["botao"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 17, COR_SUAVE)
 		else:

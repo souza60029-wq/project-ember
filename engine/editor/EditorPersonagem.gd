@@ -439,6 +439,7 @@ func _montar_popups() -> void:
 	la.add_child(_lbl_altura)
 	la.add_child(_mini("+", _ajustar_altura.bind(10)))
 	la.add_child(_botao("Medir pelo sprite parado", _medir_altura))
+	ar.add_child(_linha_botoes([_botao("Exportar arquivo (.ember)", _exportar_arquivo), _botao("Importar arquivo (.ember)", _importar_arquivo)]))
 	ar.add_child(_linha_botoes([_botao("Copiar backup", _copiar_backup), _botao("Colar backup", _colar_backup)]))
 
 	# Mais
@@ -1317,3 +1318,34 @@ func _colar_backup() -> void:
 	_catalogo().recarregar()
 	_veio_da_lista = true
 	_abrir(r["personagem"], str(r["pasta"]), false)
+
+
+# ---------- arquivo .ember (tudo do personagem, comprimido) ----------
+
+func _exportar_arquivo() -> void:
+	var e: String = _salvar()
+	if e != "":
+		_mensagem(e)
+		return
+	var r: Dictionary = Pacote.exportar_arquivo(_p, _pasta_midia)
+	if not bool(r["ok"]):
+		_mensagem(str(r["erro"]))
+		return
+	_fechar_pop("artes")
+	_mensagem("Exportado: Ember/exportados/%s (%d arquivos)" % [str(r["caminho"]).get_file(), int(r["arquivos"])])
+
+
+func _importar_arquivo() -> void:
+	_abrir_dialogo("Importar personagem", PackedStringArray(["*.ember ; Personagem Ember"]), _ao_importar_ember, false)
+
+
+func _ao_importar_ember(caminho: String) -> void:
+	var r: Dictionary = Pacote.importar_arquivo(caminho)
+	if not bool(r["ok"]):
+		_mensagem(str(r["erro"]))
+		return
+	_fechar_pop("artes")
+	_catalogo().recarregar()
+	_veio_da_lista = true
+	_abrir(r["personagem"], str(r["pasta"]), false)
+	_mensagem("Personagem importado.")

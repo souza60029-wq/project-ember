@@ -60,6 +60,17 @@ const GUARDA_REGEN_POR_FRAME: float = 0.4
 
 # Golpes fortes (força 2 ou 3) causam 30% menos dano.
 const FORCA_FORTE: int = 2
+
+# REV (overhead): os dois socos ou os dois chutes executam o golpe forte na hora, sem a parte lenta
+# (startup). Cada uso enche a barra PULSE. Ela esvazia sozinha (99 -> 0 em 5 s), mas só depois de
+# 2 s sem usar REV. Cheia (100), entra em FLATLINE: o personagem pisca vermelho, perde a defesa
+# 15% mais rápido, anda mais devagar e não pode usar REV até o Pulse zerar.
+const PULSE_POR_USO: float = 30.0
+const PULSE_ESPERA: int = 120
+const PULSE_DECAI_FRAME: float = 99.0 / 300.0
+const FLATLINE_VEL: float = 0.7
+const FLATLINE_GUARDA: float = 1.15
+const REV_JANELA_COMBO: int = 4
 const REDUCAO_DANO_FORTE: float = 0.30
 const CUSTO_GUARD_CANCEL: float = 50.0
 const CORPO_LARGURA: float = 50.0
@@ -107,6 +118,9 @@ var esquiva_trava: int = 0
 var reacao: String = "alto"
 var relogio: int = 0
 var _tras_antes: bool = false
+var pulse: float = 0.0
+var pulse_ocioso: int = 0
+var flatline: bool = false
 # Blocos de golpe: movimento programado, sons por sprite e encadeamento.
 var _mov_frames: int = 0
 var _mov_vx: float = 0.0
@@ -182,11 +196,19 @@ func resetar(x: float, olhando_direita: bool) -> void:
 	_mov_frames = 0
 	_cadeia = 0
 	_ultimo_idx_som = -2
+	pulse = 0.0
+	pulse_ocioso = 0
+	flatline = false
 
 # ---------- Entrada e estados ----------
 
 func atualizar(dir: Vector2, apertados: Dictionary) -> void:
 	relogio += 1
+	pulse_ocioso += 1
+	if pulse > 0.0 and pulse_ocioso > PULSE_ESPERA:
+		pulse = maxf(0.0, pulse - PULSE_DECAI_FRAME)
+		if flatline and pulse <= 0.0:
+			flatline = false
 	if parry_aviso > 0:
 		parry_aviso -= 1
 	if guarda_aviso > 0:
@@ -235,6 +257,9 @@ func _estado_livre(dir: Vector2, apertados: Dictionary, atras: bool, cima: bool)
 	if apertados.get("ESQ", false) and not no_chao and esquiva_trava == 0:
 		_iniciar_esquiva(dir)
 		return
+	var rev: String = _rev_pedido(apertados)
+	if rev != "" and _tentar_rev(rev):
+		return
 	var g: Dictionary = _escolher_golpe(apertados)
 	if not g.is_empty():
 		_executar(g)
@@ -248,10 +273,10 @@ func _estado_livre(dir: Vector2, apertados: Dictionary, atras: bool, cima: bool)
 		return
 	if atras:
 		estado = Estado.DEFENDENDO
-		vel.x = dir.x * VEL_ANDAR * 0.5
+		vel.x = dir.x * VEL_ANDAR * 0.5 * _mult_vel()
 	elif absf(dir.x) > 0.3:
 		estado = Estado.ANDANDO
-		vel.x = dir.x * VEL_ANDAR
+		vel.x = dir.x * VEL_ANDAR * _mult_vel()
 	else:
 		estado = Estado.PARADO
 		vel.x = 0.0
@@ -304,6 +329,11 @@ func _processar_ataque(apertados: Dictionary) -> void:
 	if tempo > total_ataque:
 		_fim_do_golpe()
 		return
+	# REV logo depois de começar um golpe (soco fraco e depois o forte) vira o golpe forte na hora.
+	if tempo <= REV_JANELA_COMBO:
+		var rev: String = _rev_pedido(apertados)
+		if rev != "" and _tentar_rev(rev):
+			return
 	_blocos_do_quadro()
 	_sons_do_quadro()
 	if _mov_frames > 0:
@@ -312,6 +342,46 @@ func _processar_ataque(apertados: Dictionary) -> void:
 	elif not no_chao:
 		vel.x = 0.0
 	_tentar_encadear(apertados)
+
+
+func _mult_vel() -> float:
+	return FLATLINE_VEL if flatline else 1.0
+
+
+func _rev_pedido(apertados: Dictionary) -> String:
+	if bool(apertados.get("REVP", false)):
+		return "P"
+	if bool(apertados.get("REVK", false)):
+		return "K"
+	return ""
+
+
+# Executa o golpe forte (HP ou HK) direto na parte ativa. Devolve false se não deu.
+func _tentar_rev(tipo: String) -> bool:
+	if flatline:
+		return false
+	var botao: String = "HP" if tipo == "P" else "HK"
+	var g: Dictionary = {}
+	for x in golpes:
+		var d: Dictionary = x
+		if bool(d["base"]) and str(d["botao"]) == botao:
+			g = d
+			break
+	if g.is_empty() or (bool(g["so_ar"]) and not no_chao):
+		return false
+	_executar(g)
+	var inicio: int = int(g["startup"])
+	for t in range(1, inicio + 1):
+		tempo = t
+		_blocos_do_quadro()
+	tempo = inicio
+	_sons_do_quadro()
+	pulse_ocioso = 0
+	pulse = minf(100.0, pulse + PULSE_POR_USO)
+	if pulse >= 100.0:
+		flatline = true
+	eventos.append({"tipo": "rev", "golpe": {}})
+	return true
 
 
 func _bloco_do_tipo(g: Dictionary, tipo: String) -> Dictionary:
@@ -428,7 +498,7 @@ func _processar_decolagem(dir: Vector2) -> void:
 		vel.y = VEL_SOMBRA_ALTO if alto else VEL_SOMBRA_BAIXO
 	else:
 		vel.y = VEL_NORMAL_ALTO if alto else VEL_NORMAL_BAIXO
-	vel.x = pulo_direcao_x * VEL_ANDAR
+	vel.x = pulo_direcao_x * VEL_ANDAR * _mult_vel()
 	no_chao = true
 	eventos.append({"tipo": "pulo", "golpe": {}})
 	estado = Estado.PULANDO
@@ -583,7 +653,10 @@ func _quebrar_guarda() -> void:
 
 func receber_bloqueio(g: Dictionary) -> void:
 	frames_sem_guarda = 0
-	guarda -= float(GUARDA_CUSTO.get(int(g["forca"]), 14.0))
+	var custo_guarda: float = float(GUARDA_CUSTO.get(int(g["forca"]), 14.0))
+	if flatline:
+		custo_guarda *= FLATLINE_GUARDA
+	guarda -= custo_guarda
 	if guarda <= 0.0:
 		_quebrar_guarda()
 		return

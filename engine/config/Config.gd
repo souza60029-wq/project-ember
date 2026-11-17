@@ -11,6 +11,8 @@ signal idioma_mudou
 signal debug_mudou(ligado: bool)
 signal mapa_mudou
 signal hud_mudou
+signal audio_mudou
+signal camadas_debug_pedido
 
 const ARQUIVO := "user://config.json"
 const MODOS := ["automatico", "touch", "controle"]
@@ -33,6 +35,11 @@ var debug_hitboxes := false
 var rotacao := "automatica"
 # HUD do sistema: desligado, retângulo ou quadrado (arrastável). Posição salva.
 var hud_modo := "desligado"
+# Áudio: liga/desliga a música do menu, a música da luta e os sons de luta. Músicas banidas não tocam na luta.
+var musica_menu_ligada := true
+var musica_luta_ligada := true
+var sons_luta_ligados := true
+var musicas_banidas: Array = []
 var hud_pos := Vector2(16.0, 70.0)
 # Mapa de botões da luta: jogador (1 ou 2) -> {botão do controle: função}.
 var mapas := {}
@@ -139,6 +146,32 @@ func _criar_pastas_do_app() -> void:
 			f.close()
 
 
+func definir_audio(chave: String, ligado: bool) -> void:
+	match chave:
+		"menu":
+			musica_menu_ligada = ligado
+		"luta":
+			musica_luta_ligada = ligado
+		"sons":
+			sons_luta_ligados = ligado
+	_salvar()
+	audio_mudou.emit()
+
+
+func musica_banida(caminho: String) -> bool:
+	return musicas_banidas.has(caminho.get_file().to_lower())
+
+
+func alternar_musica_banida(caminho: String) -> void:
+	var nome: String = caminho.get_file().to_lower()
+	if musicas_banidas.has(nome):
+		musicas_banidas.erase(nome)
+	else:
+		musicas_banidas.append(nome)
+	_salvar()
+	audio_mudou.emit()
+
+
 func definir_hud(m: String) -> void:
 	if not HUD_MODOS.has(m) or m == hud_modo:
 		return
@@ -199,7 +232,7 @@ func botao_fisico_apertado(dev: int, botao: String) -> bool:
 
 # Botões de luta apertados no controle "dev", pelo mapa do jogador.
 func entrada_luta(dev: int, jogador: int) -> Dictionary:
-	var r := {"LP": false, "LK": false, "HP": false, "HK": false, "BO": false, "ESQ": false}
+	var r := {"LP": false, "LK": false, "HP": false, "HK": false, "BO": false, "ESQ": false, "REVP": false, "REVK": false}
 	var m: Dictionary = mapas[jogador]
 	for b in BOTOES_FISICOS:
 		var f: String = str(m.get(b, ""))
@@ -272,6 +305,14 @@ func _carregar() -> void:
 	if IDIOMAS.has(i):
 		idioma = i
 	debug_hitboxes = bool(dados.get("debug", false))
+	musica_menu_ligada = bool(dados.get("mus_menu", true))
+	musica_luta_ligada = bool(dados.get("mus_luta", true))
+	sons_luta_ligados = bool(dados.get("sons_luta", true))
+	var ban = dados.get("banidas", [])
+	if typeof(ban) == TYPE_ARRAY:
+		musicas_banidas = []
+		for b in ban:
+			musicas_banidas.append(str(b).to_lower())
 	var rot := str(dados.get("rotacao", "automatica"))
 	if ROTACOES.has(rot):
 		rotacao = rot
@@ -294,4 +335,4 @@ func _carregar() -> void:
 func _salvar() -> void:
 	var f := FileAccess.open(ARQUIVO, FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"modo": modo_escolhido, "idioma": idioma, "debug": debug_hitboxes, "rotacao": rotacao, "hud": hud_modo, "hud_pos": [hud_pos.x, hud_pos.y], "mapas": {"1": mapas[1], "2": mapas[2]}}))
+		f.store_string(JSON.stringify({"modo": modo_escolhido, "idioma": idioma, "debug": debug_hitboxes, "rotacao": rotacao, "mus_menu": musica_menu_ligada, "mus_luta": musica_luta_ligada, "sons_luta": sons_luta_ligados, "banidas": musicas_banidas, "hud": hud_modo, "hud_pos": [hud_pos.x, hud_pos.y], "mapas": {"1": mapas[1], "2": mapas[2]}}))

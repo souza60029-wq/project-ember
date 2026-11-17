@@ -12,6 +12,8 @@ const PREFIXO := "BEP1:"
 const EXTENSOES_MIDIA := ["png", "jpg", "jpeg", "webp", "ogg", "mp3", "wav"]
 const AVISO_TAMANHO := 3000000
 const RAIZES := ["res://personagens/", "user://personagens/"]
+const EXTENSAO_ARQUIVO := "ember"
+const PASTA_EXPORTADOS := "user://exportados/"
 
 
 # personagem: dicionário do personagem como está no editor.
@@ -71,6 +73,81 @@ static func exportar(personagem: Dictionary, pasta_midia: String) -> Dictionary:
 
 
 # Lê o texto do backup sem gravar nada. Usado pelo importar e pelos testes.
+# Exporta TUDO do personagem (dados, sprites, sons e artes) para um arquivo .ember, comprimido (zip).
+# Fica em user://exportados/ (no iPhone: Arquivos > No meu iPhone > Ember > exportados).
+static func exportar_arquivo(personagem: Dictionary, pasta_midia: String) -> Dictionary:
+	var norm: Dictionary = Formato.normalizar(personagem)
+	if not norm["ok"]:
+		return _falha(str(norm["erro"]))
+	var p: Dictionary = norm["personagem"]
+	DirAccess.make_dir_recursive_absolute(PASTA_EXPORTADOS)
+	var destino: String = PASTA_EXPORTADOS + str(p["id"]) + "." + EXTENSAO_ARQUIVO
+	var zip := ZIPPacker.new()
+	if zip.open(destino) != OK:
+		return _falha("Nao consegui criar " + destino)
+	var manifesto := {"formato": "ember-personagem", "versao": 1, "id": str(p["id"]), "nome": str(p["nome"])}
+	zip.start_file("ember.json")
+	zip.write_file(JSON.stringify(manifesto).to_utf8_buffer())
+	zip.close_file()
+	zip.start_file("personagem.json")
+	zip.write_file(JSON.stringify(p, "\t").to_utf8_buffer())
+	zip.close_file()
+	var n: int = 0
+	if pasta_midia != "":
+		var arquivos: Array[String] = []
+		_listar(pasta_midia, "", arquivos)
+		for rel in arquivos:
+			var bytes: PackedByteArray = FileAccess.get_file_as_bytes(pasta_midia + rel)
+			if bytes.is_empty():
+				continue
+			zip.start_file(rel)
+			zip.write_file(bytes)
+			zip.close_file()
+			n += 1
+	zip.close()
+	return {"ok": true, "caminho": destino, "arquivos": n, "erro": ""}
+
+
+# Importa um arquivo .ember: cria o personagem em user://personagens/<id>/ (id repetido vira _2, _3...).
+static func importar_arquivo(caminho: String) -> Dictionary:
+	var zip := ZIPReader.new()
+	if zip.open(caminho) != OK:
+		return _falha("Arquivo invalido.")
+	var arquivos: PackedStringArray = zip.get_files()
+	if not arquivos.has("personagem.json"):
+		zip.close()
+		return _falha("Esse arquivo nao tem um personagem.")
+	var bruto: Variant = JSON.parse_string(zip.read_file("personagem.json").get_string_from_utf8())
+	if typeof(bruto) != TYPE_DICTIONARY:
+		zip.close()
+		return _falha("Dados do personagem invalidos.")
+	var norm: Dictionary = Formato.normalizar(bruto)
+	if not norm["ok"]:
+		zip.close()
+		return _falha(str(norm["erro"]))
+	var p: Dictionary = norm["personagem"]
+	var id: String = id_livre(str(p["id"]))
+	p["id"] = id
+	var pasta: String = "user://personagens/" + id + "/"
+	DirAccess.make_dir_recursive_absolute(pasta)
+	for nome in arquivos:
+		var n: String = str(nome)
+		if n.ends_with("/") or n.contains("..") or n.begins_with("/") or not (n.get_extension().to_lower() in EXTENSOES_MIDIA):
+			continue
+		DirAccess.make_dir_recursive_absolute((pasta + n).get_base_dir())
+		var f := FileAccess.open(pasta + n, FileAccess.WRITE)
+		if f != null:
+			f.store_buffer(zip.read_file(n))
+			f.close()
+	zip.close()
+	var j := FileAccess.open(pasta + "personagem.json", FileAccess.WRITE)
+	if j == null:
+		return _falha("Nao consegui gravar o personagem neste aparelho.")
+	j.store_string(JSON.stringify(p, "\t"))
+	j.close()
+	return {"ok": true, "id": id, "personagem": p, "pasta": pasta, "erro": ""}
+
+
 static func ler_indice(texto: String) -> Dictionary:
 	var t := texto.strip_edges().replace("\n", "").replace("\r", "").replace(" ", "").replace("\t", "")
 	if not t.begins_with(PREFIXO):

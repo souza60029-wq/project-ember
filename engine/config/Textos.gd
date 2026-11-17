@@ -4,6 +4,21 @@ extends Node
 # Cada chave tem português (pt) e inglês (en).
 
 const TABELA := {
+	"menu_multiplayer": {"pt": "Multiplayer", "en": "Multiplayer"},
+	"menu_treino": {"pt": "Treino", "en": "Training"},
+	"sub_online": {"pt": "Online", "en": "Online"},
+	"sub_vs": {"pt": "Vs", "en": "Vs"},
+	"sub_criar_curto": {"pt": "Criar", "en": "Create"},
+	"sub_editar_curto": {"pt": "Editar", "en": "Edit"},
+	"cfg_musica": {"pt": "Música", "en": "Music"},
+	"opt_mus_menu": {"pt": "Música do menu", "en": "Menu music"},
+	"opt_mus_luta": {"pt": "Música do combate", "en": "Fight music"},
+	"opt_sons_luta": {"pt": "Sons do combate", "en": "Fight sounds"},
+	"opt_mus_banidas": {"pt": "Músicas que não tocam na luta", "en": "Tracks that never play in fights"},
+	"mus_banidas_titulo": {"pt": "Não tocar na luta", "en": "Never play in fights"},
+	"mus_banidas_dica": {"pt": "Toque ou aperte A para marcar. Marcadas não tocam durante as lutas.", "en": "Tap or press A to toggle. Marked tracks never play during fights."},
+	"mus_banidas_vazio": {"pt": "Nenhuma música encontrada. Coloque arquivos em musica/.", "en": "No tracks found. Put files in musica/."},
+	"opt_camadas_debug": {"pt": "Editar camadas do menu (debug)", "en": "Edit menu layers (debug)"},
 	"menu_online": {"pt": "Online", "en": "Online"},
 	"menu_local": {"pt": "Local", "en": "Local"},
 	"menu_historia": {"pt": "História", "en": "Story"},

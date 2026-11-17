@@ -9,7 +9,7 @@ const TODOS := [
 	"voz_dano_leve", "voz_dano_forte",
 	"voz_queda", "voz_morte",
 	"bloqueio", "impacto_leve", "impacto_forte",
-	"pulo", "pouso", "passo", "esquiva", "levantar",
+	"pulo", "pouso", "passo", "esquiva", "levantar", "rev",
 	"vitoria", "derrota", "parry", "guarda_quebrada",
 ]
 

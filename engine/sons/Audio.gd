@@ -29,6 +29,7 @@ var _fades := {}
 var nome_faixa: String = ""
 var musica_muda: bool = false
 var _lista_atual: String = ""
+var _grupo_atual: String = ""
 
 
 func _ready() -> void:
@@ -42,6 +43,7 @@ func _ready() -> void:
 		m.finished.connect(_ao_terminar.bind(m))
 		add_child(m)
 		_musicas.append(m)
+	get_node("/root/Config").audio_mudou.connect(_reavaliar)
 
 
 # Devolve o caminho do arquivo que deve tocar, ou "" se não existir nenhum.
@@ -76,24 +78,46 @@ func tocar_interface_ou(nome: String, reserva: String) -> void:
 
 func tocar_musica(nome: String, repetir: bool = true) -> void:
 	_lista_atual = ""
+	if not _permitido("menu"):
+		parar_musica()
+		return
 	_tocar_arquivo(_achar_base(PASTA_MUSICA + nome), repetir)
 
 
-# Tema do personagem: personagens/<id>/musica.(ogg|mp3|wav). Devolve false se não existir.
+# Opções de Configurações > Música. grupo: "menu" (menu, título, seleção) ou "luta".
+func _permitido(grupo: String) -> bool:
+	var cfg: Node = get_node("/root/Config")
+	_grupo_atual = grupo
+	return bool(cfg.musica_luta_ligada) if grupo == "luta" else bool(cfg.musica_menu_ligada)
+
+
+func _reavaliar() -> void:
+	var cfg: Node = get_node("/root/Config")
+	var ligado: bool = bool(cfg.musica_luta_ligada) if _grupo_atual == "luta" else bool(cfg.musica_menu_ligada)
+	if not ligado:
+		var g: String = _grupo_atual
+		parar_musica()
+		_grupo_atual = g
+	elif _lista_atual == "#luta":
+		var antes: Array = _arquivos_da_lista("#luta")
+		if not antes.has(_nome_musica):
+			_proxima_da_lista()
+
+
 func tocar_musica_personagem(personagem_id: String) -> bool:
 	var c: String = _achar_no_personagem(personagem_id, "musica")
-	if c == "":
-		return false
+	if c == "" or not _permitido("luta"):
+		return c != ""
 	_lista_atual = ""
 	_tocar_arquivo(c, true)
 	return true
 
 
-# Toca uma música sorteada de musica/<pasta>/ e sorteia outra quando ela acaba.
-# Sem arquivos na pasta, toca musica/<reserva>.
-# Toca uma música sorteada de musica/<pasta>/ (e de user://musica/<pasta>/) e sorteia outra
-# quando ela acaba. Sem arquivos: toca musica/<reserva> ou, sem reserva, para a música.
 func tocar_aleatoria(pasta: String, reserva: String = "") -> void:
+	if not _permitido("luta" if pasta == "#luta" else "menu"):
+		_lista_atual = ""
+		parar_musica()
+		return
 	if not _arquivos_da_lista(pasta).is_empty():
 		_lista_atual = pasta
 		_proxima_da_lista()
@@ -104,8 +128,6 @@ func tocar_aleatoria(pasta: String, reserva: String = "") -> void:
 		parar_musica()
 
 
-# Música de luta: toca todas as faixas (musica/, musica/menu/, musica/luta/).
-# Faixas reservadas do sistema (titulo, selecao) ficam de fora.
 func tocar_luta() -> void:
 	tocar_aleatoria("#luta")
 
@@ -124,7 +146,7 @@ func _proxima_da_lista() -> void:
 
 # Faixas de uma lista. "#luta" = raiz de musica/ + menu/ + luta/; outro nome = a pasta musica/<nome>/.
 # Também lê user://musica/ (pasta do app no aparelho) com a mesma estrutura.
-func _arquivos_da_lista(nome: String) -> Array:
+func _arquivos_da_lista(nome: String, incluir_banidas: bool = false) -> Array:
 	var r: Array = []
 	for base in [PASTA_MUSICA, PASTA_MUSICA_USUARIO]:
 		if nome == "#luta":
@@ -133,7 +155,19 @@ func _arquivos_da_lista(nome: String) -> Array:
 			r.append_array(_listar_musicas(str(base) + "luta/"))
 		else:
 			r.append_array(_listar_musicas(str(base) + nome + "/"))
+	if nome == "#luta" and not incluir_banidas:
+		var cfg: Node = get_node("/root/Config")
+		var ok: Array = []
+		for f in r:
+			if not cfg.musica_banida(str(f)):
+				ok.append(f)
+		r = ok
 	return r
+
+
+# Todas as faixas que podem tocar na luta (para a lista "músicas que não tocam na luta").
+func faixas_de_luta() -> Array:
+	return _arquivos_da_lista("#luta", true)
 
 
 func _ao_terminar(p: AudioStreamPlayer) -> void:
@@ -232,11 +266,19 @@ func _achar_no_personagem(personagem_id: String, relativo: String) -> String:
 
 
 # Aceita o caminho com extensão ou sem extensão (testa ogg, mp3, wav).
+# Em exportações, os arquivos de áudio de res:// são importados e não existem como arquivo solto:
+# FileAccess.file_exists dá falso. Por isso res:// é conferido com ResourceLoader.exists.
+func _existe(caminho: String) -> bool:
+	if caminho.begins_with("res://"):
+		return ResourceLoader.exists(caminho) or FileAccess.file_exists(caminho)
+	return FileAccess.file_exists(caminho)
+
+
 func _achar_base(base: String) -> String:
-	if base.get_extension().to_lower() in EXTENSOES and FileAccess.file_exists(base):
+	if base.get_extension().to_lower() in EXTENSOES and _existe(base):
 		return base
 	for ext in EXTENSOES:
-		if FileAccess.file_exists(base + "." + ext):
+		if _existe(base + "." + ext):
 			return base + "." + ext
 	return ""
 

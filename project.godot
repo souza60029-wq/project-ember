@@ -3,7 +3,7 @@ config_version=5
 [application]
 
 config/name="Ember"
-config/version="0.4.0"
+config/version="0.5.0"
 config/icon="res://Icon.PNG"
 run/main_scene="res://engine/inicio/Abertura.tscn"
 config/features=PackedStringArray("4.2")
@@ -33,3 +33,7 @@ pointing/emulate_touch_from_mouse=true
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
+
+[audio]
+
+general/ios/session_category=3
