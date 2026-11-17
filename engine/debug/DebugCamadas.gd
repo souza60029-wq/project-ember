@@ -1,9 +1,13 @@
 extends Control
 
 # FERRAMENTA DE DEBUG (pode ser removida: apague a pasta engine/debug/).
-# Editor das camadas do menu: mostra TODAS as camadas com moldura, e você arrasta (um dedo) e
-# aumenta/diminui (dois dedos, ou os botões - e +) cada uma. Salvar aplica na tela inicial e grava
-# user://debug/layout_menu.txt (Arquivos > No meu iPhone > Ember > debug) para você me mandar.
+# Editor das camadas do menu.
+#  - Coluna da esquerda: uma miniatura por camada (a de cima é a que fica na frente).
+#    A barrinha de cima sobe a camada selecionada (para a frente); a de baixo desce.
+#  - Um dedo move a camada, dois dedos (pinça) mudam o tamanho.
+#  - Coluna da direita: olho (prévia sem botões), salvar, resetar, fechar e setas de navegação.
+#  - Salvar grava o layout (fica assim nas próximas vezes que abrir o app) e gera
+#    Arquivos > No meu iPhone > Ember > debug > layout_menu.txt para você me mandar.
 
 signal fechado
 
@@ -12,16 +16,32 @@ const LayoutDebug = preload("res://engine/debug/LayoutDebug.gd")
 const VIEW_W := 960.0
 const VIEW_H := 540.0
 const COR_SEL := Color(1.0, 0.9, 0.2)
-const COR_OUTRAS := Color(0.5, 0.9, 1.0, 0.55)
+const COR_CAIXA := Color(0.07, 0.06, 0.16, 0.88)
+const COR_BORDA := Color(0.55, 0.4, 0.95)
+const COR_ICONE := Color(1.0, 1.0, 1.0, 0.95)
+
+const TAM := 52.0          # quadrado de camada
+const TAM_DIR := 46.0      # ícones da direita
+const GAP := 6.0
+const BARRA_H := 16.0
+const COL_ESQ := 12.0
+const COL_DIR := VIEW_W - 12.0 - TAM_DIR
+const Y_LISTA := 64.0
+const Y_DIR := 72.0
+const ICONES_DIR := ["olho", "salvar", "resetar", "fechar", "menu-", "menu+", "sub-", "sub+"]
 
 var _menu: Variant = null
-var _nomes: Array = []
+var _nomes: Array = []          # de trás para frente
 var _sel: int = 0
 var _dedos := {}
 var _dist_antes: float = 0.0
 var _msg: String = ""
 var _msg_t: float = 0.0
 var _toque: bool = false
+var _previa: bool = false
+var _acao_toque: String = ""
+var _toque_pos: Vector2 = Vector2.ZERO
+var _arrastou: bool = false
 
 
 func abrir(menu: Variant) -> void:
@@ -29,7 +49,6 @@ func abrir(menu: Variant) -> void:
 	_toque = DisplayServer.is_touchscreen_available()
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	_montar_botoes()
 	_atualizar_nomes()
 
 
@@ -60,58 +79,82 @@ func _ajuste(nome: String) -> Dictionary:
 	return l[nome]
 
 
-func _botao(texto: String, r: Rect2, acao: Callable) -> void:
-	var b := Button.new()
-	b.text = texto
-	b.position = r.position
-	b.size = r.size
-	b.add_theme_font_size_override("font_size", 18)
-	for par in [["normal", Color(0.12, 0.1, 0.28, 0.92)], ["hover", Color(0.2, 0.15, 0.42, 0.95)], ["pressed", Color(0.35, 0.25, 0.7, 0.95)]]:
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = par[1]
-		sb.border_color = Color(0.55, 0.4, 0.95)
-		sb.set_border_width_all(2)
-		sb.set_corner_radius_all(8)
-		b.add_theme_stylebox_override(str(par[0]), sb)
-	b.pressed.connect(acao)
-	add_child(b)
+# ---------- geometria dos controles ----------
+
+func _rect_barra(topo: bool) -> Rect2:
+	if topo:
+		return Rect2(COL_ESQ, Y_LISTA, TAM, BARRA_H)
+	return Rect2(COL_ESQ, Y_LISTA + BARRA_H + GAP + float(_nomes.size()) * (TAM + GAP), TAM, BARRA_H)
 
 
-func _montar_botoes() -> void:
-	var w: float = 122.0
-	var y1: float = 410.0
-	var y2: float = 466.0
-	var g: float = 6.0
-	var linha1: Array = [["< Camada", _camada.bind(-1)], ["Camada >", _camada.bind(1)], ["Tamanho -", _escala.bind(-0.02)], ["Tamanho +", _escala.bind(0.02)], ["Resetar", _resetar]]
-	for i in range(linha1.size()):
-		_botao(str(linha1[i][0]), Rect2(10.0 + float(i) * (w + g), y1, w, 48.0), linha1[i][1])
-	var linha2: Array = [["< Menu", _navegar.bind(-1, 0)], ["Menu >", _navegar.bind(1, 0)], ["^ Sub", _navegar.bind(0, -1)], ["v Sub", _navegar.bind(0, 1)], ["Salvar", _salvar], ["Copiar txt", _copiar], ["Fechar", _fechar]]
-	for i in range(linha2.size()):
-		_botao(str(linha2[i][0]), Rect2(10.0 + float(i) * (w + g), y2, w, 56.0), linha2[i][1])
+func _rect_camada(linha: int) -> Rect2:
+	return Rect2(COL_ESQ, Y_LISTA + BARRA_H + GAP + float(linha) * (TAM + GAP), TAM, TAM)
 
 
-func _camada(d: int) -> void:
-	if _nomes.is_empty():
-		return
-	_sel = posmod(_sel + d, _nomes.size())
+func _rect_icone(i: int) -> Rect2:
+	return Rect2(COL_DIR, Y_DIR + float(i) * (TAM_DIR + GAP), TAM_DIR, TAM_DIR)
 
 
-func _escala(d: float) -> void:
+func _acao_em(p: Vector2) -> String:
+	if _previa:
+		return "olho" if _rect_icone(0).has_point(p) else ""
+	for i in range(ICONES_DIR.size()):
+		if _rect_icone(i).has_point(p):
+			return str(ICONES_DIR[i])
+	if _rect_barra(true).grow(3.0).has_point(p):
+		return "frente"
+	if _rect_barra(false).grow(3.0).has_point(p):
+		return "tras"
+	var n: int = _nomes.size()
+	for linha in range(n):
+		if _rect_camada(linha).has_point(p):
+			return "camada:%d" % (n - 1 - linha)
+	return ""
+
+
+# ---------- ações ----------
+
+func _executar(a: String) -> void:
+	match a:
+		"olho":
+			_previa = not _previa
+		"salvar":
+			_salvar()
+		"resetar":
+			_resetar()
+		"fechar":
+			_fechar()
+		"menu-":
+			_menu.debug_navegar(-1, 0)
+		"menu+":
+			_menu.debug_navegar(1, 0)
+		"sub-":
+			_menu.debug_navegar(0, -1)
+		"sub+":
+			_menu.debug_navegar(0, 1)
+		"frente":
+			_mudar_ordem(1)
+		"tras":
+			_mudar_ordem(-1)
+		_:
+			if a.begins_with("camada:"):
+				_sel = clampi(int(a.get_slice(":", 1)), 0, maxi(0, _nomes.size() - 1))
+
+
+func _mudar_ordem(d: int) -> void:
 	var n: String = _nome_sel()
 	if n == "":
 		return
-	var a: Dictionary = _ajuste(n)
-	a["esc"] = clampf(float(a["esc"]) + d, 0.05, 8.0)
+	_menu.debug_mover_ordem(n, d)
+	_atualizar_nomes()
 
 
 func _resetar() -> void:
 	var n: String = _nome_sel()
 	if n != "":
 		_menu.debug_layout().erase(n)
-
-
-func _navegar(da: int, ds: int) -> void:
-	_menu.debug_navegar(da, ds)
+		_msg = "Camada resetada."
+		_msg_t = 1.5
 
 
 func _retangulos() -> Dictionary:
@@ -121,16 +164,23 @@ func _retangulos() -> Dictionary:
 	return r
 
 
+# Só o que foi mexido (o resto fica no padrão).
+func _ajustes_usados() -> Dictionary:
+	var r := {}
+	var l: Dictionary = _menu.debug_layout()
+	for k in l.keys():
+		var v: Variant = l[k]
+		if typeof(v) != TYPE_DICTIONARY:
+			continue
+		if absf(float(v.get("x", 0.0))) > 0.01 or absf(float(v.get("y", 0.0))) > 0.01 or absf(float(v.get("esc", 1.0)) - 1.0) > 0.0005:
+			r[k] = v
+	return r
+
+
 func _salvar() -> void:
-	var erro: String = LayoutDebug.salvar(_menu.debug_layout(), _retangulos())
-	_msg = "Salvo e aplicado. Arquivo: Ember/debug/layout_menu.txt" if erro == "" else erro
+	var erro: String = LayoutDebug.salvar(_ajustes_usados(), _retangulos(), _menu.debug_ordem())
+	_msg = "Salvo! Fica assim ao abrir o app. Arquivo em Ember/debug." if erro == "" else erro
 	_msg_t = 4.0
-
-
-func _copiar() -> void:
-	DisplayServer.clipboard_set(LayoutDebug.texto(_menu.debug_layout(), _retangulos()))
-	_msg = "Texto copiado. Cole numa mensagem para me mandar."
-	_msg_t = 3.0
 
 
 func _fechar() -> void:
@@ -138,18 +188,23 @@ func _fechar() -> void:
 	queue_free()
 
 
-# ---------- arrastar e pinçar ----------
+# ---------- toques: botões, arrastar e pinçar ----------
 
 func _gui_input(ev: InputEvent) -> void:
-	var n: String = _nome_sel()
-	if n == "":
-		return
 	if _toque:
 		var t := ev as InputEventScreenTouch
 		if t != null:
 			if t.pressed:
 				_dedos[t.index] = t.position
+				if _dedos.size() == 1:
+					_acao_toque = _acao_em(t.position)
+					_toque_pos = t.position
+					_arrastou = false
 			else:
+				if _dedos.size() == 1 and _acao_toque != "" and not _arrastou and _acao_em(t.position) == _acao_toque:
+					_executar(_acao_toque)
+				if _dedos.size() <= 1:
+					_acao_toque = ""
 				_dedos.erase(t.index)
 			_dist_antes = 0.0
 			accept_event()
@@ -157,25 +212,56 @@ func _gui_input(ev: InputEvent) -> void:
 		var d := ev as InputEventScreenDrag
 		if d != null:
 			_dedos[d.index] = d.position
-			if _dedos.size() >= 2:
-				var ks: Array = _dedos.keys()
-				var dist: float = (_dedos[ks[0]] as Vector2).distance_to(_dedos[ks[1]])
-				if _dist_antes > 4.0 and dist > 4.0:
-					var a: Dictionary = _ajuste(n)
-					a["esc"] = clampf(float(a["esc"]) * dist / _dist_antes, 0.05, 8.0)
-				_dist_antes = dist
-			else:
-				_mover(n, d.relative)
+			if _acao_toque != "":
+				if d.position.distance_to(_toque_pos) > 14.0:
+					_arrastou = true
+				accept_event()
+				return
+			if _previa:
+				accept_event()
+				return
+			var n: String = _nome_sel()
+			if n != "":
+				if _dedos.size() >= 2:
+					var ks: Array = _dedos.keys()
+					var dist: float = (_dedos[ks[0]] as Vector2).distance_to(_dedos[ks[1]])
+					if _dist_antes > 4.0 and dist > 4.0:
+						var a: Dictionary = _ajuste(n)
+						a["esc"] = clampf(float(a["esc"]) * dist / _dist_antes, 0.05, 8.0)
+					_dist_antes = dist
+				else:
+					_mover(n, d.relative)
 			accept_event()
 		return
+	# mouse (computador)
 	var mb := ev as InputEventMouseButton
-	if mb != null and mb.pressed and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN):
-		_escala(0.03 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -0.03)
-		accept_event()
+	if mb != null:
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			if mb.pressed:
+				_acao_toque = _acao_em(mb.position)
+				_toque_pos = mb.position
+				_arrastou = false
+			else:
+				if _acao_toque != "" and not _arrastou and _acao_em(mb.position) == _acao_toque:
+					_executar(_acao_toque)
+				_acao_toque = ""
+			accept_event()
+		elif mb.pressed and not _previa and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+			var nn: String = _nome_sel()
+			if nn != "":
+				var aa: Dictionary = _ajuste(nn)
+				aa["esc"] = clampf(float(aa["esc"]) + (0.03 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -0.03), 0.05, 8.0)
+			accept_event()
 		return
 	var mm := ev as InputEventMouseMotion
 	if mm != null and (mm.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
-		_mover(n, mm.relative)
+		if _acao_toque != "":
+			if mm.position.distance_to(_toque_pos) > 14.0:
+				_arrastou = true
+		elif not _previa:
+			var n2: String = _nome_sel()
+			if n2 != "":
+				_mover(n2, mm.relative)
 		accept_event()
 
 
@@ -187,25 +273,83 @@ func _mover(nome: String, rel: Vector2) -> void:
 
 # ---------- desenho ----------
 
+func _caixa(r: Rect2, fundo: Color, borda: Color, raio: int, larg: int) -> void:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = fundo
+	sb.border_color = borda
+	sb.set_border_width_all(larg)
+	sb.set_corner_radius_all(raio)
+	draw_style_box(sb, r)
+
+
+func _icone(nome: String, c: Vector2, cor: Color) -> void:
+	match nome:
+		"olho":
+			draw_polyline(PackedVector2Array([c + Vector2(-17, 0), c + Vector2(-9, -8), c + Vector2(0, -11), c + Vector2(9, -8), c + Vector2(17, 0)]), cor, 2.5)
+			draw_polyline(PackedVector2Array([c + Vector2(-17, 0), c + Vector2(-9, 8), c + Vector2(0, 11), c + Vector2(9, 8), c + Vector2(17, 0)]), cor, 2.5)
+			draw_circle(c, 5.0, cor)
+		"salvar":
+			draw_rect(Rect2(c + Vector2(-14, -14), Vector2(28, 28)), cor, false, 2.5)
+			draw_rect(Rect2(c + Vector2(-7, -14), Vector2(14, 8)), cor, false, 2.0)
+			draw_rect(Rect2(c + Vector2(-8, 3), Vector2(16, 11)), cor, false, 2.0)
+		"resetar":
+			draw_arc(c, 13.0, -0.3, PI * 1.55, 24, cor, 2.5)
+			var fim: Vector2 = c + Vector2(cos(PI * 1.55), sin(PI * 1.55)) * 13.0
+			draw_polyline(PackedVector2Array([fim + Vector2(-7, 1), fim, fim + Vector2(2, 8)]), cor, 2.5)
+		"fechar":
+			draw_line(c + Vector2(-11, -11), c + Vector2(11, 11), cor, 3.0)
+			draw_line(c + Vector2(11, -11), c + Vector2(-11, 11), cor, 3.0)
+		"menu-":
+			for o in [-5.0, 5.0]:
+				draw_polyline(PackedVector2Array([c + Vector2(o + 4, -10), c + Vector2(o - 4, 0), c + Vector2(o + 4, 10)]), cor, 2.5)
+		"menu+":
+			for o in [-5.0, 5.0]:
+				draw_polyline(PackedVector2Array([c + Vector2(o - 4, -10), c + Vector2(o + 4, 0), c + Vector2(o - 4, 10)]), cor, 2.5)
+		"sub-":
+			draw_polyline(PackedVector2Array([c + Vector2(-10, 5), c + Vector2(0, -5), c + Vector2(10, 5)]), cor, 2.5)
+		"sub+":
+			draw_polyline(PackedVector2Array([c + Vector2(-10, -5), c + Vector2(0, 5), c + Vector2(10, -5)]), cor, 2.5)
+		"frente":
+			draw_polyline(PackedVector2Array([c + Vector2(-8, 3), c + Vector2(0, -3), c + Vector2(8, 3)]), cor, 2.0)
+		"tras":
+			draw_polyline(PackedVector2Array([c + Vector2(-8, -3), c + Vector2(0, 3), c + Vector2(8, -3)]), cor, 2.0)
+
+
 func _draw() -> void:
-	var fonte: Font = ThemeDB.fallback_font
-	for i in range(_nomes.size()):
-		var nome: String = str(_nomes[i])
-		var r: Rect2 = _menu.debug_rect(nome)
+	if _previa:
+		var r0: Rect2 = _rect_icone(0)
+		_caixa(r0, COR_CAIXA, COR_SEL, 12, 2)
+		_icone("olho", r0.get_center(), COR_SEL)
+		return
+	var nome_sel: String = _nome_sel()
+	if nome_sel != "":
+		draw_rect(_menu.debug_rect(nome_sel), COR_SEL, false, 3.0)
+	# barras de ordem
+	for topo in [true, false]:
+		var rb: Rect2 = _rect_barra(topo)
+		_caixa(rb, COR_CAIXA, COR_BORDA, 8, 2)
+		_icone("frente" if topo else "tras", rb.get_center(), COR_ICONE)
+	# camadas (a da frente fica no topo)
+	var n: int = _nomes.size()
+	for linha in range(n):
+		var i: int = n - 1 - linha
+		var r: Rect2 = _rect_camada(linha)
 		var sel: bool = i == _sel
-		draw_rect(r, COR_SEL if sel else COR_OUTRAS, false, 4.0 if sel else 1.5)
-		draw_string(fonte, r.position + Vector2(6.0, 18.0 + float(i % 4) * 14.0), nome, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, COR_SEL if sel else COR_OUTRAS)
-		if sel:
-			for c in [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]:
-				draw_rect(Rect2(c - Vector2(8.0, 8.0), Vector2(16.0, 16.0)), COR_SEL)
-	draw_rect(Rect2(0.0, 402.0, VIEW_W, 138.0), Color(0.0, 0.0, 0.0, 0.7))
-	var n: String = _nome_sel()
-	var info: String = "(nenhuma camada: coloque artes em ui/menu/)"
-	if n != "":
-		var a: Dictionary = _ajuste(n)
-		var r2: Rect2 = _menu.debug_rect(n)
-		info = "%s   x=%.0f  y=%.0f  tamanho x%.2f   (%.0f x %.0f px)" % [n, float(a["x"]), float(a["y"]), float(a["esc"]), r2.size.x, r2.size.y]
-	draw_string(fonte, Vector2(10.0, 396.0), info, HORIZONTAL_ALIGNMENT_LEFT, VIEW_W - 20.0, 16, COR_SEL)
+		_caixa(r, COR_CAIXA, COR_SEL if sel else COR_BORDA, 10, 3 if sel else 2)
+		var tex: Texture2D = _menu.debug_textura(str(_nomes[i]))
+		if tex != null:
+			var ts: Vector2 = tex.get_size()
+			var e: float = minf((TAM - 10.0) / maxf(ts.x, 1.0), (TAM - 10.0) / maxf(ts.y, 1.0))
+			draw_texture_rect(tex, Rect2(r.get_center() - ts * e * 0.5, ts * e), false)
+	# ícones da direita
+	for i in range(ICONES_DIR.size()):
+		var ri: Rect2 = _rect_icone(i)
+		_caixa(ri, COR_CAIXA, COR_BORDA, 12, 2)
+		_icone(str(ICONES_DIR[i]), ri.get_center(), COR_ICONE)
+	var fonte: Font = ThemeDB.fallback_font
+	if nome_sel != "":
+		var a: Dictionary = _ajuste(nome_sel)
+		var info: String = "%s   x %.0f   y %.0f   tamanho %.2f" % [nome_sel, float(a["x"]), float(a["y"]), float(a["esc"])]
+		draw_string(fonte, Vector2(0.0, VIEW_H - 10.0), info, HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 14, COR_SEL)
 	if _msg_t > 0.0:
-		draw_string(fonte, Vector2(10.0, 24.0), _msg, HORIZONTAL_ALIGNMENT_LEFT, VIEW_W - 20.0, 18, Color(0.6, 1.0, 0.6))
-	draw_string(fonte, Vector2(10.0, 44.0), "1 dedo: mover   2 dedos: tamanho   DEBUG: apague engine/debug/ na versao final", HORIZONTAL_ALIGNMENT_LEFT, VIEW_W - 20.0, 12, Color(1.0, 1.0, 1.0, 0.7))
+		draw_string(fonte, Vector2(0.0, 30.0), _msg, HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 16, COR_SEL)

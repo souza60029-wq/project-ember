@@ -1001,35 +1001,78 @@ func _abrir_dialogo(titulo: String, filtros: PackedStringArray, depois: Callable
 	_fd.popup_centered_ratio(0.95)
 
 
-# iOS: o usuario escolhe Galeria ou Explorador de arquivos. Usa o seletor nativo do sistema
-# (precisa de Godot 4.4 ou mais novo). No Godot 4.2 o seletor nativo nao existe: a Galeria avisa e
-# os Arquivos abrem o seletor do app (pasta Ember).
+# iOS: o usuario escolhe Galeria ou Explorador de arquivos. O app pede ao codigo nativo
+# (ios/EmberSeletor.m, adicionado ao projeto no build) para abrir o seletor do iPhone. A conversa
+# e por arquivos na pasta do app: pedido.json (daqui para o nativo) e resultado.json (de volta).
+const SELETOR := "user://seletor/"
+var _sel_id: int = 0
+var _sel_timer: Timer = null
+var _sel_espera: float = 0.0
+
+
 func _origem_escolhida(origem: String) -> void:
 	_fechar_pop("origem")
-	var ds: Object = DisplayServer
-	if ds.has_method("file_dialog_show"):
-		var filtros: PackedStringArray = _orig_filtros
-		if origem == "galeria" and str(_orig_filtros[0]).contains("*.png"):
-			filtros = PackedStringArray(["image/png,image/jpeg,image/webp"])
-		var modo: int = 1 if _fd_varios else 0
-		var erro: int = int(ds.call("file_dialog_show", _orig_titulo, "", "", false, modo, filtros, Callable(self, "_ao_dialogo_nativo")))
-		if erro != OK:
-			_mensagem("Nao consegui abrir o seletor do sistema (erro %d)." % erro)
+	var corpo: String = str(_orig_filtros[0]) if _orig_filtros.size() > 0 else ""
+	var tipo: String = "qualquer"
+	if corpo.contains("*.png"):
+		tipo = "imagem"
+	elif corpo.contains("*.ogg") or corpo.contains("*.mp3"):
+		tipo = "audio"
+	if origem == "galeria" and tipo != "imagem":
+		origem = "arquivos"
+	DirAccess.make_dir_recursive_absolute(SELETOR + "recebidos")
+	_limpar_pasta(SELETOR + "recebidos")
+	for velho in ["resultado.json", "pedido.json", "pedido.tmp"]:
+		if FileAccess.file_exists(SELETOR + velho):
+			DirAccess.remove_absolute(SELETOR + velho)
+	_sel_id = Time.get_ticks_msec()
+	var f := FileAccess.open(SELETOR + "pedido.tmp", FileAccess.WRITE)
+	if f == null:
+		_mensagem("Nao consegui preparar o seletor (erro %d)." % FileAccess.get_open_error())
 		return
-	if origem == "galeria":
-		_mensagem("A galeria precisa do Godot 4.4 ou mais novo (atualize o workflow do iOS).")
-		return
-	_fd.access = FileDialog.ACCESS_USERDATA
-	_fd.current_dir = "user://"
-	_fd.title = _orig_titulo
-	_fd.filters = _orig_filtros
-	_fd.file_mode = FileDialog.FILE_MODE_OPEN_FILES if _fd_varios else FileDialog.FILE_MODE_OPEN_FILE
-	_fd.popup_centered_ratio(0.95)
+	f.store_string(JSON.stringify({"id": _sel_id, "origem": origem, "varios": _fd_varios, "tipo": tipo}))
+	f.close()
+	DirAccess.rename_absolute(SELETOR + "pedido.tmp", SELETOR + "pedido.json")
+	_sel_espera = 0.0
+	if _sel_timer == null:
+		_sel_timer = Timer.new()
+		_sel_timer.wait_time = 0.3
+		_sel_timer.timeout.connect(_sel_poll)
+		add_child(_sel_timer)
+	_sel_timer.start()
 
 
-func _ao_dialogo_nativo(ok: bool, caminhos: PackedStringArray, _filtro: int) -> void:
-	if ok and not caminhos.is_empty():
-		_on_arquivos.call_deferred(caminhos)
+func _sel_poll() -> void:
+	_sel_espera += 0.3
+	if FileAccess.file_exists(SELETOR + "resultado.json"):
+		var txt: String = FileAccess.get_file_as_string(SELETOR + "resultado.json")
+		DirAccess.remove_absolute(SELETOR + "resultado.json")
+		_sel_timer.stop()
+		var d: Variant = JSON.parse_string(txt)
+		if typeof(d) == TYPE_DICTIONARY and int((d as Dictionary).get("id", -1)) == _sel_id:
+			if bool(d.get("ok", false)):
+				var lista := PackedStringArray()
+				for c in d.get("arquivos", []):
+					lista.append(str(c))
+				if not lista.is_empty():
+					_on_arquivos(lista)
+					return
+			if d.has("erro"):
+				_mensagem(str(d["erro"]))
+		return
+	# o codigo nativo apaga o pedido assim que o recebe; se ele continua la, o nativo nao existe neste build
+	if _sel_espera >= 3.0 and FileAccess.file_exists(SELETOR + "pedido.json"):
+		_sel_timer.stop()
+		DirAccess.remove_absolute(SELETOR + "pedido.json")
+		_mensagem("O seletor do iPhone nao esta neste build. Veja o passo 'Adicionar seletor' no GitHub Actions.")
+
+
+func _limpar_pasta(pasta: String) -> void:
+	var dir := DirAccess.open(pasta)
+	if dir == null:
+		return
+	for nome in dir.get_files():
+		dir.remove(nome)
 
 
 func _on_arquivo(caminho: String) -> void:

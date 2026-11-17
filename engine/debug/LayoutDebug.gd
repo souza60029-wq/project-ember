@@ -32,11 +32,29 @@ static func ler() -> Dictionary:
 	return r
 
 
+# Ordem das camadas salva (de trás para frente). Vazia se não houver.
+static func ler_ordem() -> Array:
+	var r: Array = []
+	if not FileAccess.file_exists(ARQ_JSON):
+		return r
+	var f := FileAccess.open(ARQ_JSON, FileAccess.READ)
+	if f == null:
+		return r
+	var d: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	if typeof(d) == TYPE_DICTIONARY and typeof((d as Dictionary).get("_ordem", null)) == TYPE_ARRAY:
+		for n in (d as Dictionary)["_ordem"]:
+			r.append(str(n))
+	return r
+
+
 # Texto legível + bloco de código. retangulos: {"nome": Rect2} (onde cada camada ficou na tela de 960x540).
-static func texto(layout: Dictionary, retangulos: Dictionary) -> String:
+static func texto(layout: Dictionary, retangulos: Dictionary, ordem: Array = []) -> String:
 	var linhas: PackedStringArray = []
 	linhas.append("EMBER - layout das camadas do menu (tela de referencia 960 x 540)")
 	linhas.append("x e y = deslocamento em pixels a partir da posicao padrao; esc = multiplicador de tamanho")
+	if not ordem.is_empty():
+		linhas.append("ordem das camadas (de tras para frente): " + " > ".join(PackedStringArray(ordem)))
 	linhas.append("")
 	var nomes: Array = layout.keys()
 	for n in retangulos.keys():
@@ -63,17 +81,19 @@ static func texto(layout: Dictionary, retangulos: Dictionary) -> String:
 
 
 # Devolve "" se salvou, ou a mensagem de erro.
-static func salvar(layout: Dictionary, retangulos: Dictionary) -> String:
+static func salvar(layout: Dictionary, retangulos: Dictionary, ordem: Array = []) -> String:
 	DirAccess.make_dir_recursive_absolute(PASTA)
 	var f := FileAccess.open(ARQ_JSON, FileAccess.WRITE)
 	if f == null:
 		return "Nao consegui gravar em " + ARQ_JSON
-	f.store_string(JSON.stringify(layout, "\t"))
+	var dados: Dictionary = layout.duplicate(true)
+	dados["_ordem"] = ordem
+	f.store_string(JSON.stringify(dados, "\t"))
 	f.close()
 	var t := FileAccess.open(ARQ_TXT, FileAccess.WRITE)
 	if t == null:
 		return "Nao consegui gravar em " + ARQ_TXT
-	t.store_string(texto(layout, retangulos))
+	t.store_string(texto(layout, retangulos, ordem))
 	t.close()
 	return ""
 
