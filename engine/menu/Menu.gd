@@ -373,7 +373,7 @@ func _atualizar_arte() -> void:
 
 func _carregar_layout() -> void:
 	_ajustes_camadas = LAYOUT_FIXO.duplicate(true)
-	if ResourceLoader.exists(PASTA_DEBUG_MODULO):
+	if (ResourceLoader.exists(PASTA_DEBUG_MODULO) or FileAccess.file_exists(PASTA_DEBUG_MODULO) or FileAccess.file_exists(PASTA_DEBUG_MODULO + ".remap")):
 		var scr: Variant = load(PASTA_DEBUG_MODULO)
 		if scr != null:
 			var d: Variant = scr.ler()
@@ -468,7 +468,7 @@ func _desenhar_camadas() -> void:
 # ---------- Ferramenta de debug das camadas (engine/debug/; pode ser apagada) ----------
 
 func _abrir_debug_camadas() -> void:
-	if _overlay != null or not ResourceLoader.exists(CENA_DEBUG_CAMADAS):
+	if _overlay != null or not (ResourceLoader.exists(CENA_DEBUG_CAMADAS) or FileAccess.file_exists(CENA_DEBUG_CAMADAS) or FileAccess.file_exists(CENA_DEBUG_CAMADAS + ".remap")):
 		return
 	var scr: Variant = load(CENA_DEBUG_CAMADAS)
 	if scr == null:
@@ -1179,7 +1179,7 @@ func _executar(item: Dictionary) -> void:
 			_som("menu_confirma")
 			_navegacao().ir_para_selecao(acao)
 		"criar", "editar":
-			if ResourceLoader.exists(CENA_EDITOR):
+			if (ResourceLoader.exists(CENA_EDITOR) or FileAccess.file_exists(CENA_EDITOR) or FileAccess.file_exists(CENA_EDITOR + ".remap")):
 				_som("menu_confirma")
 				modo_editor = acao
 				get_tree().change_scene_to_file(CENA_EDITOR)
