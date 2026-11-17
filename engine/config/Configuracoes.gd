@@ -93,7 +93,7 @@ func _linhas() -> Array:
 			r.append({"id": "idioma", "tipo": "escolha", "rotulo": _t("opt_idioma"), "valor": _t("idioma_" + str(cfg.idioma))})
 			r.append({"id": "debug", "tipo": "escolha", "rotulo": _t("opt_debug"), "valor": _lig(bool(cfg.debug_hitboxes))})
 			# Ferramenta de debug (aparece só se a pasta engine/debug/ existir; apague-a na versão final).
-			if ResourceLoader.exists(MODULO_DEBUG):
+			if (ResourceLoader.exists(MODULO_DEBUG) or FileAccess.file_exists(MODULO_DEBUG) or FileAccess.file_exists(MODULO_DEBUG + ".remap")):
 				r.append({"id": "camadas", "tipo": "acao", "rotulo": _t("opt_camadas_debug"), "valor": ""})
 		1:
 			r.append({"id": "rotacao", "tipo": "escolha", "rotulo": _t("opt_rotacao"), "valor": _t("rot_" + str(cfg.rotacao))})
@@ -204,7 +204,7 @@ func _acionar(dev: int) -> void:
 				"camadas":
 					fechado.emit()
 					queue_free()
-					_config().camadas_debug_pedido.emit.call_deferred()
+					_config().call_deferred("emit_signal", "camadas_debug_pedido")
 				"restaurar":
 					if _pode_editar_mapa(dev):
 						_config().restaurar_mapa(_sub)
