@@ -103,6 +103,8 @@ var _msgs: Array[Label] = []
 var _fd: FileDialog
 var _fd_acao: Callable
 var _fd_varios: bool = false
+var _orig_titulo: String = ""
+var _orig_filtros: PackedStringArray = PackedStringArray()
 var _pops := {}
 
 
@@ -375,6 +377,11 @@ func _montar_popups() -> void:
 	_fd.file_selected.connect(_on_arquivo)
 	_fd.files_selected.connect(_on_arquivos)
 	add_child(_fd)
+
+	# Importar: de onde? (iOS)
+	var origem_pop: VBoxContainer = _novo_popup("origem", "Importar de onde?", Vector2i(600, 400))
+	origem_pop.add_child(_botao("Galeria de fotos", _origem_escolhida.bind("galeria")))
+	origem_pop.add_child(_botao("Explorador de arquivos", _origem_escolhida.bind("arquivos")))
 
 	# Adicionar golpe
 	var mais: VBoxContainer = _novo_popup("mais", "Adicionar golpe", Vector2i(520, 520))
@@ -982,16 +989,9 @@ func _abrir_dialogo(titulo: String, filtros: PackedStringArray, depois: Callable
 	_fd_acao = depois
 	_fd_varios = varios
 	if OS.get_name() == "iOS":
-		var exts: Array = []
-		var corpo: String = str(filtros[0]).split(";")[0]
-		for e in corpo.split(","):
-			var limpo: String = str(e).strip_edges().trim_prefix("*.").to_lower()
-			if limpo != "":
-				exts.append(limpo)
-		var nav = Navegador.new()
-		nav.escolhido.connect(_on_arquivos)
-		add_child(nav)
-		nav.abrir(titulo, exts, varios)
+		_orig_titulo = titulo
+		_orig_filtros = filtros
+		_abrir_pop("origem")
 		return
 	_fd.title = titulo
 	_fd.filters = filtros
@@ -999,6 +999,37 @@ func _abrir_dialogo(titulo: String, filtros: PackedStringArray, depois: Callable
 	if "use_native_dialog" in _fd:
 		_fd.set("use_native_dialog", false)
 	_fd.popup_centered_ratio(0.95)
+
+
+# iOS: o usuario escolhe Galeria ou Explorador de arquivos. Usa o seletor nativo do sistema
+# (precisa de Godot 4.4 ou mais novo). No Godot 4.2 o seletor nativo nao existe: a Galeria avisa e
+# os Arquivos abrem o seletor do app (pasta Ember).
+func _origem_escolhida(origem: String) -> void:
+	_fechar_pop("origem")
+	var ds: Object = DisplayServer
+	if ds.has_method("file_dialog_show"):
+		var filtros: PackedStringArray = _orig_filtros
+		if origem == "galeria" and str(_orig_filtros[0]).contains("*.png"):
+			filtros = PackedStringArray(["image/png,image/jpeg,image/webp"])
+		var modo: int = 1 if _fd_varios else 0
+		var erro: int = int(ds.call("file_dialog_show", _orig_titulo, "", "", false, modo, filtros, Callable(self, "_ao_dialogo_nativo")))
+		if erro != OK:
+			_mensagem("Nao consegui abrir o seletor do sistema (erro %d)." % erro)
+		return
+	if origem == "galeria":
+		_mensagem("A galeria precisa do Godot 4.4 ou mais novo (atualize o workflow do iOS).")
+		return
+	_fd.access = FileDialog.ACCESS_USERDATA
+	_fd.current_dir = "user://"
+	_fd.title = _orig_titulo
+	_fd.filters = _orig_filtros
+	_fd.file_mode = FileDialog.FILE_MODE_OPEN_FILES if _fd_varios else FileDialog.FILE_MODE_OPEN_FILE
+	_fd.popup_centered_ratio(0.95)
+
+
+func _ao_dialogo_nativo(ok: bool, caminhos: PackedStringArray, _filtro: int) -> void:
+	if ok and not caminhos.is_empty():
+		_on_arquivos.call_deferred(caminhos)
 
 
 func _on_arquivo(caminho: String) -> void:
