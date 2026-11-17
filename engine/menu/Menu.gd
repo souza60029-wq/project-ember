@@ -135,7 +135,7 @@ var _bolha_w: float = 0.0
 var _nome_faixa: String = ""
 var _giro: float = 0.0
 var _camadas: Dictionary = {}
-var _layout: Dictionary = {}
+var _ajustes_camadas: Dictionary = {}
 var _variantes_cache: Dictionary = {}
 var _sorteio: Dictionary = {}
 var _arte_nome: String = ""
@@ -372,14 +372,14 @@ func _atualizar_arte() -> void:
 # ---------- Posição e tamanho das camadas ----------
 
 func _carregar_layout() -> void:
-	_layout = LAYOUT_FIXO.duplicate(true)
+	_ajustes_camadas = LAYOUT_FIXO.duplicate(true)
 	if ResourceLoader.exists(PASTA_DEBUG_MODULO):
 		var scr: Variant = load(PASTA_DEBUG_MODULO)
 		if scr != null:
 			var d: Variant = scr.ler()
 			if typeof(d) == TYPE_DICTIONARY:
 				for k in (d as Dictionary).keys():
-					_layout[k] = d[k]
+					_ajustes_camadas[k] = d[k]
 
 # Retângulo padrão de cada camada, SEM esticar (mantém a proporção da imagem).
 func _rect_padrao(nome: String, tex: Texture2D) -> Rect2:
@@ -408,7 +408,7 @@ func _rect_padrao(nome: String, tex: Texture2D) -> Rect2:
 # Retângulo final = padrão + ajuste salvo (deslocamento x/y e multiplicador de tamanho).
 func _rect_layer(nome: String, tex: Texture2D) -> Rect2:
 	var r: Rect2 = _rect_padrao(nome, tex)
-	var a: Dictionary = _layout.get(nome, {})
+	var a: Dictionary = _ajustes_camadas.get(nome, {})
 	if a.is_empty():
 		return r
 	var esc: float = maxf(0.05, float(a.get("esc", 1.0)))
@@ -498,7 +498,7 @@ func debug_rect(nome: String) -> Rect2:
 	return _rect_layer(nome, t)
 
 func debug_layout() -> Dictionary:
-	return _layout
+	return _ajustes_camadas
 
 func debug_navegar(d_aba: int, d_sub: int) -> void:
 	if d_aba != 0:
@@ -1201,6 +1201,3 @@ func _som(nome: String) -> void:
 # Música do menu: faixas aleatórias de musica/menu/ (não muda ao trocar de menu).
 func _tocar_musica_da_aba() -> void:
 	_audio().tocar_aleatoria("menu")
-
-
-
