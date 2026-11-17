@@ -48,6 +48,8 @@ func abrir(menu: Variant) -> void:
 	_menu = menu
 	_toque = DisplayServer.is_touchscreen_available()
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	position = Vector2.ZERO
+	size = Vector2(VIEW_W, VIEW_H)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_atualizar_nomes()
 
@@ -190,7 +192,9 @@ func _fechar() -> void:
 
 # ---------- toques: botões, arrastar e pinçar ----------
 
-func _gui_input(ev: InputEvent) -> void:
+# Lê os toques direto da tela (_input), sem depender do tamanho deste Control: o Menu pai pode
+# ter tamanho 0 para fins de toque, e aí nenhum _gui_input chega.
+func _input(ev: InputEvent) -> void:
 	if _toque:
 		var t := ev as InputEventScreenTouch
 		if t != null:
@@ -207,7 +211,7 @@ func _gui_input(ev: InputEvent) -> void:
 					_acao_toque = ""
 				_dedos.erase(t.index)
 			_dist_antes = 0.0
-			accept_event()
+			get_viewport().set_input_as_handled()
 			return
 		var d := ev as InputEventScreenDrag
 		if d != null:
@@ -215,10 +219,10 @@ func _gui_input(ev: InputEvent) -> void:
 			if _acao_toque != "":
 				if d.position.distance_to(_toque_pos) > 14.0:
 					_arrastou = true
-				accept_event()
+				get_viewport().set_input_as_handled()
 				return
 			if _previa:
-				accept_event()
+				get_viewport().set_input_as_handled()
 				return
 			var n: String = _nome_sel()
 			if n != "":
@@ -231,7 +235,7 @@ func _gui_input(ev: InputEvent) -> void:
 					_dist_antes = dist
 				else:
 					_mover(n, d.relative)
-			accept_event()
+			get_viewport().set_input_as_handled()
 		return
 	# mouse (computador)
 	var mb := ev as InputEventMouseButton
@@ -245,13 +249,13 @@ func _gui_input(ev: InputEvent) -> void:
 				if _acao_toque != "" and not _arrastou and _acao_em(mb.position) == _acao_toque:
 					_executar(_acao_toque)
 				_acao_toque = ""
-			accept_event()
+			get_viewport().set_input_as_handled()
 		elif mb.pressed and not _previa and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN):
 			var nn: String = _nome_sel()
 			if nn != "":
 				var aa: Dictionary = _ajuste(nn)
 				aa["esc"] = clampf(float(aa["esc"]) + (0.03 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -0.03), 0.05, 8.0)
-			accept_event()
+			get_viewport().set_input_as_handled()
 		return
 	var mm := ev as InputEventMouseMotion
 	if mm != null and (mm.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
@@ -262,7 +266,7 @@ func _gui_input(ev: InputEvent) -> void:
 			var n2: String = _nome_sel()
 			if n2 != "":
 				_mover(n2, mm.relative)
-		accept_event()
+		get_viewport().set_input_as_handled()
 
 
 func _mover(nome: String, rel: Vector2) -> void:
