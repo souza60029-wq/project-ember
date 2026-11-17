@@ -11,16 +11,16 @@ jobs:
 
       - name: Baixar o Godot (macOS)
         run: |
-          wget https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_macos.universal.zip
-          unzip Godot_v4.2.2-stable_macos.universal.zip
+          wget https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_macos.universal.zip
+          unzip Godot_v4.4.1-stable_macos.universal.zip
           chmod +x Godot.app/Contents/MacOS/Godot
 
       - name: Baixar templates de exportacao
         run: |
-          wget https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_export_templates.tpz
-          mkdir -p ~/Library/Application\ Support/Godot/export_templates/4.2.2.stable
-          unzip -q Godot_v4.2.2-stable_export_templates.tpz
-          mv templates/* ~/Library/Application\ Support/Godot/export_templates/4.2.2.stable/
+          wget https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz
+          mkdir -p ~/Library/Application\ Support/Godot/export_templates/4.4.1.stable
+          unzip -q Godot_v4.4.1-stable_export_templates.tpz
+          mv templates/* ~/Library/Application\ Support/Godot/export_templates/4.4.1.stable/
 
       - name: Instalar Python e Pillow
         uses: actions/setup-python@v5
