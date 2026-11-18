@@ -5,6 +5,8 @@ extends CanvasLayer
 const CENA_MENU := "res://engine/menu/Menu.tscn"
 const CENA_LUTA := "res://engine/luta/Luta.tscn"
 const CENA_SELECAO := "res://engine/selecao/Selecao.tscn"
+const CENA_EXPORTAR := "res://engine/exportar/TelaExportar.tscn"
+const Fonte = preload("res://engine/nucleo/Fonte.gd")
 const FADE_INICIAL := 1.2
 const FADE_SAIDA := 0.35
 const FADE_ENTRADA := 0.35
@@ -48,6 +50,7 @@ var _ocupado := false
 func _ready() -> void:
 	layer = 100
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	Fonte.aplicar(get_tree().root)
 
 	_cobertura = ColorRect.new()
 	_cobertura.color = Color.BLACK
@@ -92,6 +95,10 @@ func ir_para_luta() -> void:
 func ir_para_selecao(modo: String) -> void:
 	modo_luta = modo
 	_ir(CENA_SELECAO, false)
+
+
+func ir_para_exportar() -> void:
+	_ir(CENA_EXPORTAR, false)
 
 
 func ir_para_menu() -> void:

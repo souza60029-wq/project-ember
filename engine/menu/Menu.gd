@@ -9,6 +9,7 @@ extends Control
 
 const Glifos = preload("res://engine/nucleo/Glifos.gd")
 const Configuracoes = preload("res://engine/config/Configuracoes.gd")
+const TelaExportar = preload("res://engine/exportar/TelaExportar.gd")
 const CENA_EDITOR := "res://engine/editor/EditorPersonagem.tscn"
 const PASTA_MENU := "res://ui/menu/"
 const VIEW_W := 960.0
@@ -25,16 +26,16 @@ const TAB_W := 218.0
 const TAB_GAP := 16.0
 const TAB_Y := 458.0
 const TAB_H := 52.0
-const SUB_W := 210.0
-const SUB_H := 44.0
-const SUB_GAP := 14.0
+const SUB_W := 170.0
+const SUB_H := 34.0
+const SUB_GAP := 8.0
 const SUB_ACIMA_TAB := 12.0
 const SOMBRA_H := 10.0
 const ICONE_TAB := 32.0
 const DICA_Y := 534.0
 
 # Carrossel de menus (centro inferior) e disco de música (canto superior direito).
-const ICON_Y := 420.0
+const ICON_Y := 452.0
 const ICON_TAM := 64.0
 const ICON_ESPACO := 175.0
 const DISCO_C := Vector2(922.0, 36.0)
@@ -107,8 +108,8 @@ const ABAS := [
 	{
 		"chave": "menu_editar", "icone": "editar", "fundo": "fundo_editar",
 		"filhos": [
-			{"chave": "sub_criar_curto", "id": "criar", "acao": "criar"},
-			{"chave": "sub_editar_curto", "id": "editar_perso", "acao": "editar"}
+			{"chave": "sub_exportar_curto", "id": "criar", "acao": "exportar"},
+			{"chave": "sub_apagar_curto", "id": "editar_perso", "acao": "apagar"}
 		]
 	},
 	{"chave": "menu_colecionaveis", "icone": "colecionaveis", "fundo": "fundo_colecionaveis", "acao": "em_breve"}
@@ -181,6 +182,9 @@ func _t(chave: String) -> String:
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if TelaExportar.voltar_aba >= 0:
+		aba = clampi(TelaExportar.voltar_aba, 0, ABAS.size() - 1)
+		TelaExportar.voltar_aba = -1
 	_pos = float(aba)
 	_nome_faixa = str(_audio().nome_faixa)
 	_audio().faixa_mudou.connect(_on_faixa)
@@ -936,7 +940,7 @@ func _layout_principal(lista: Array) -> void:
 	var n: int = filhos.size()
 	if n > 0:
 		var x: float = VIEW_W * 0.5 - SUB_W * 0.5
-		var topo: float = ICON_Y - 64.0 - float(n) * SUB_H - float(n - 1) * SUB_GAP
+		var topo: float = ICON_Y - 52.0 - float(n) * SUB_H - float(n - 1) * SUB_GAP
 		for j in range(n):
 			var it: Dictionary = filhos[j]
 			var r := Rect2(x, topo + float(j) * (SUB_H + SUB_GAP), SUB_W, SUB_H)
@@ -1223,6 +1227,11 @@ func _executar(item: Dictionary) -> void:
 			# Todo modo que leva a uma luta passa antes pela seleção de personagens.
 			_som("menu_confirma")
 			_navegacao().ir_para_selecao(acao)
+		"exportar", "apagar":
+			_som("menu_confirma")
+			TelaExportar.modo = acao
+			TelaExportar.voltar_aba = aba
+			_navegacao().ir_para_exportar()
 		"criar", "editar":
 			if (ResourceLoader.exists(CENA_EDITOR) or FileAccess.file_exists(CENA_EDITOR) or FileAccess.file_exists(CENA_EDITOR + ".remap")):
 				_som("menu_confirma")
