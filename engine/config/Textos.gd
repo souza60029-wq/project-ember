@@ -48,7 +48,7 @@ const TABELA := {
 	"cfg_controles": {"pt": "Controles", "en": "Controls"},
 	"opt_idioma": {"pt": "Idioma", "en": "Language"},
 	"opt_debug": {"pt": "Ver hitboxes", "en": "Show hitboxes"},
-	"cfg_debug": {"pt": "Debug", "en": "Debug"},
+	"cfg_aba_debug": {"pt": "Debug", "en": "Debug"},
 	"opt_fps_camadas": {"pt": "FPS das camadas", "en": "Layer FPS"},
 	"opt_shader_fundo": {"pt": "Shader do fundo", "en": "Background shader"},
 	"opt_rotacao": {"pt": "Rotação da tela", "en": "Screen rotation"},
