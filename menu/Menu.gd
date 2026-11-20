@@ -9,6 +9,13 @@ extends Control
 
 const Glifos = preload("res://engine/nucleo/Glifos.gd")
 const Configuracoes = preload("res://engine/config/Configuracoes.gd")
+const TelaExportar = preload("res://engine/exportar/TelaExportar.gd")
+const FundoHistoria = preload("res://engine/menu/FundoHistoria.gd")
+const SHADER_LUZ := "res://ui/shaders/luz_vermelha.gdshader"
+const SHADER_FAIXA := "res://ui/shaders/faixa.gdshader"
+# Faixa tombada atrás do personagem do menu (centro e meio tamanho, em px de 960x540).
+const FAIXA_CENTRO := Vector2(836.0, 270.0)
+const FAIXA_METADE := Vector2(150.0, 340.0)
 const CENA_EDITOR := "res://engine/editor/EditorPersonagem.tscn"
 const PASTA_MENU := "res://ui/menu/"
 const VIEW_W := 960.0
@@ -25,16 +32,16 @@ const TAB_W := 218.0
 const TAB_GAP := 16.0
 const TAB_Y := 458.0
 const TAB_H := 52.0
-const SUB_W := 210.0
-const SUB_H := 44.0
-const SUB_GAP := 14.0
+const SUB_W := 170.0
+const SUB_H := 34.0
+const SUB_GAP := 8.0
 const SUB_ACIMA_TAB := 12.0
 const SOMBRA_H := 10.0
 const ICONE_TAB := 32.0
 const DICA_Y := 534.0
 
 # Carrossel de menus (centro inferior) e disco de música (canto superior direito).
-const ICON_Y := 420.0
+const ICON_Y := 452.0
 const ICON_TAM := 64.0
 const ICON_ESPACO := 175.0
 const DISCO_C := Vector2(922.0, 36.0)
@@ -107,8 +114,8 @@ const ABAS := [
 	{
 		"chave": "menu_editar", "icone": "editar", "fundo": "fundo_editar",
 		"filhos": [
-			{"chave": "sub_criar_curto", "id": "criar", "acao": "criar"},
-			{"chave": "sub_editar_curto", "id": "editar_perso", "acao": "editar"}
+			{"chave": "sub_importar_curto", "id": "criar", "acao": "importar"},
+			{"chave": "sub_apagar_curto", "id": "editar_perso", "acao": "apagar"}
 		]
 	},
 	{"chave": "menu_colecionaveis", "icone": "colecionaveis", "fundo": "fundo_colecionaveis", "acao": "em_breve"}
@@ -136,6 +143,12 @@ var _nome_faixa: String = ""
 var _giro: float = 0.0
 var _camadas: Dictionary = {}
 var _ajustes_camadas: Dictionary = {}
+# Ordem de desenho das camadas, de trás para frente ("personagem" = a arte do menu atual).
+const ORDEM_PADRAO := ["camada1_fundo", "camada2_grade", "camada2_movimento", "personagem", "camada4_borda_topo", "camada4_borda_baixo"]
+var _ordem_camadas: Array = []
+var _fundo_novo: Control = null
+var _luz: ColorRect = null
+var _faixa: ColorRect = null
 var _variantes_cache: Dictionary = {}
 var _sorteio: Dictionary = {}
 var _arte_nome: String = ""
@@ -173,11 +186,62 @@ func _t(chave: String) -> String:
 		return str(par[0]) if str(_config().idioma) == "pt" else str(par[1])
 	return s
 
+# ---------- Fundo novo: camadas animadas + shader de luz + faixa tombada ----------
+# Os nós ficam "atrás do pai" (show_behind_parent): são desenhados antes do conteúdo do Menu.
+# Ordem: fundo -> passe de luz (só sobre o fundo) -> faixa -> personagem e interface do Menu.
+
+func _criar_fundo() -> void:
+	var f: Control = FundoHistoria.new()
+	f.show_behind_parent = true
+	add_child(f)
+	if not f.existe():
+		f.queue_free()
+		return
+	_fundo_novo = f
+	_luz = _nodo_shader(SHADER_LUZ)
+	_faixa = _nodo_shader(SHADER_FAIXA)
+	if _faixa != null:
+		var m: ShaderMaterial = _faixa.material as ShaderMaterial
+		m.set_shader_parameter("u_center", FAIXA_CENTRO)
+		m.set_shader_parameter("u_half", FAIXA_METADE)
+	_config().fundo_mudou.connect(_aplicar_shader_fundo)
+	_aplicar_shader_fundo()
+
+
+func _nodo_shader(caminho: String) -> ColorRect:
+	if not (ResourceLoader.exists(caminho) or FileAccess.file_exists(caminho)):
+		return null
+	var sh: Shader = load(caminho) as Shader
+	if sh == null:
+		return null
+	var r := ColorRect.new()
+	r.position = Vector2.ZERO
+	r.size = Vector2(VIEW_W, VIEW_H)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.show_behind_parent = true
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	r.material = m
+	add_child(r)
+	return r
+
+
+# Shader ligado: o fundo fica sem cor (dessaturado) e a luz vermelha vai por cima.
+# Desligado: o fundo aparece com as cores originais. A faixa nunca é afetada.
+func _aplicar_shader_fundo() -> void:
+	if _luz != null:
+		_luz.visible = bool(_config().shader_fundo)
+
+
 # ---------- Ciclo de vida ----------
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if TelaExportar.voltar_aba >= 0:
+		aba = clampi(TelaExportar.voltar_aba, 0, ABAS.size() - 1)
+		TelaExportar.voltar_aba = -1
+	_criar_fundo()
 	_pos = float(aba)
 	_nome_faixa = str(_audio().nome_faixa)
 	_audio().faixa_mudou.connect(_on_faixa)
@@ -373,6 +437,7 @@ func _atualizar_arte() -> void:
 
 func _carregar_layout() -> void:
 	_ajustes_camadas = LAYOUT_FIXO.duplicate(true)
+	_ordem_camadas = ORDEM_PADRAO.duplicate()
 	if (ResourceLoader.exists(PASTA_DEBUG_MODULO) or FileAccess.file_exists(PASTA_DEBUG_MODULO) or FileAccess.file_exists(PASTA_DEBUG_MODULO + ".remap")):
 		var scr: Variant = load(PASTA_DEBUG_MODULO)
 		if scr != null:
@@ -380,6 +445,17 @@ func _carregar_layout() -> void:
 			if typeof(d) == TYPE_DICTIONARY:
 				for k in (d as Dictionary).keys():
 					_ajustes_camadas[k] = d[k]
+			var o: Variant = scr.ler_ordem()
+			if typeof(o) == TYPE_ARRAY and _ordem_valida(o as Array):
+				_ordem_camadas = (o as Array).duplicate()
+
+func _ordem_valida(o: Array) -> bool:
+	if o.size() != ORDEM_PADRAO.size():
+		return false
+	for n in ORDEM_PADRAO:
+		if not o.has(n):
+			return false
+	return true
 
 # Retângulo padrão de cada camada, SEM esticar (mantém a proporção da imagem).
 func _rect_padrao(nome: String, tex: Texture2D) -> Rect2:
@@ -432,38 +508,46 @@ func _desenhar_borda(nome: String) -> bool:
 	return true
 
 func _desenhar_camadas() -> void:
-	# 1. fundo (sem ele, usa o fundo antigo do menu ou a cor) e 2. grade parada no mesmo retângulo
-	var fundo: Texture2D = _quadro_camada("camada1_fundo")
-	if fundo != null:
-		_desenhar_layer("camada1_fundo", fundo)
-	else:
-		var antigo: Texture2D = _textura(str(ABAS[aba]["fundo"]))
-		if antigo != null:
-			draw_texture_rect(antigo, Rect2(0.0, 0.0, VIEW_W, VIEW_H), false)
-		else:
-			draw_rect(Rect2(0.0, 0.0, VIEW_W, VIEW_H), CORES[aba])
-	_desenhar_layer("camada2_grade", _quadro_camada("camada2_grade"))
-	# movimento: rola na horizontal repetindo (sem esticar)
-	var mov: Texture2D = _quadro_camada("camada2_movimento")
-	if mov != null:
-		var rm: Rect2 = _rect_layer("camada2_movimento", mov)
-		var x: float = fposmod(_tempo * CAMADA_MOV_VEL, maxf(rm.size.x, 1.0))
-		var k: float = rm.position.x - x - rm.size.x
-		while k < VIEW_W:
-			draw_texture_rect(mov, Rect2(k, rm.position.y, rm.size.x, rm.size.y), false)
-			k += rm.size.x
-	# 3. arte do personagem: só ela muda com o menu/submenu (desliza e some/aparece na troca)
-	if _arte_t < 1.0 and _arte_ant_nome != "":
-		var e: float = _arte_t * _arte_t * (3.0 - 2.0 * _arte_t)
-		_desenhar_layer(_arte_ant_nome, _quadro_camada(_arte_ant_nome), Vector2(-float(_arte_dir) * TROCA_ARTE_DESLOCA * e, 0.0), 1.0 - e)
-		_desenhar_layer(_arte_nome, _quadro_camada(_arte_nome), Vector2(float(_arte_dir) * TROCA_ARTE_DESLOCA * (1.0 - e), 0.0), e)
-	elif _arte_nome != "":
-		_desenhar_layer(_arte_nome, _quadro_camada(_arte_nome))
-	# 4. bordas: uma no topo e outra embaixo (sem elas, usa a borda única de tela inteira)
-	var b1: bool = _desenhar_borda("camada4_borda_topo")
-	var b2: bool = _desenhar_borda("camada4_borda_baixo")
-	if not b1 and not b2:
+	for slot in debug_ordem():
+		_desenhar_slot(str(slot))
+	# borda única antiga (só se não houver borda de topo nem de baixo)
+	if _frames_camada("camada4_borda_topo").is_empty() and _frames_camada("camada4_borda_baixo").is_empty():
 		_desenhar_layer("camada4_borda", _quadro_camada("camada4_borda"))
+
+func _desenhar_slot(slot: String) -> void:
+	if _fundo_novo != null and (slot == "camada1_fundo" or slot == "camada2_grade" or slot == "camada2_movimento"):
+		return
+	match slot:
+		"camada1_fundo":
+			var fundo: Texture2D = _quadro_camada("camada1_fundo")
+			if fundo != null:
+				_desenhar_layer("camada1_fundo", fundo)
+			else:
+				var antigo: Texture2D = _textura(str(ABAS[aba]["fundo"]))
+				if antigo != null:
+					draw_texture_rect(antigo, Rect2(0.0, 0.0, VIEW_W, VIEW_H), false)
+				else:
+					draw_rect(Rect2(0.0, 0.0, VIEW_W, VIEW_H), CORES[aba])
+		"camada2_grade":
+			_desenhar_layer("camada2_grade", _quadro_camada("camada2_grade"))
+		"camada2_movimento":
+			var mov: Texture2D = _quadro_camada("camada2_movimento")
+			if mov != null:
+				var rm: Rect2 = _rect_layer("camada2_movimento", mov)
+				var x: float = fposmod(_tempo * CAMADA_MOV_VEL, maxf(rm.size.x, 1.0))
+				var k: float = rm.position.x - x - rm.size.x
+				while k < VIEW_W:
+					draw_texture_rect(mov, Rect2(k, rm.position.y, rm.size.x, rm.size.y), false)
+					k += rm.size.x
+		"personagem":
+			if _arte_t < 1.0 and _arte_ant_nome != "":
+				var e: float = _arte_t * _arte_t * (3.0 - 2.0 * _arte_t)
+				_desenhar_layer(_arte_ant_nome, _quadro_camada(_arte_ant_nome), Vector2(-float(_arte_dir) * TROCA_ARTE_DESLOCA * e, 0.0), 1.0 - e)
+				_desenhar_layer(_arte_nome, _quadro_camada(_arte_nome), Vector2(float(_arte_dir) * TROCA_ARTE_DESLOCA * (1.0 - e), 0.0), e)
+			elif _arte_nome != "":
+				_desenhar_layer(_arte_nome, _quadro_camada(_arte_nome))
+		"camada4_borda_topo", "camada4_borda_baixo":
+			_desenhar_borda(slot)
 
 # ---------- Ferramenta de debug das camadas (engine/debug/; pode ser apagada) ----------
 
@@ -481,15 +565,41 @@ func _abrir_debug_camadas() -> void:
 # Camadas que estão sendo mostradas agora (nomes usados no layout).
 func debug_camadas() -> Array:
 	var r: Array = []
-	for n in ["camada1_fundo", "camada2_grade", "camada2_movimento"]:
-		if not _frames_camada(n).is_empty():
+	for slot in debug_ordem():
+		var n: String = str(slot)
+		if _fundo_novo != null and (n == "camada1_fundo" or n == "camada2_grade" or n == "camada2_movimento"):
+			continue
+		if n == "personagem":
+			if _arte_nome != "" and not _frames_camada(_arte_nome).is_empty():
+				r.append(_arte_nome)
+		elif not _frames_camada(n).is_empty():
 			r.append(n)
-	if _arte_nome != "":
-		r.append(_arte_nome)
-	for n2 in ["camada4_borda_topo", "camada4_borda_baixo", "camada4_borda"]:
-		if not _frames_camada(n2).is_empty():
-			r.append(n2)
+	if _frames_camada("camada4_borda_topo").is_empty() and _frames_camada("camada4_borda_baixo").is_empty() and not _frames_camada("camada4_borda").is_empty():
+		r.append("camada4_borda")
 	return r
+
+# Ordem atual (de trás para frente). Editável pelo editor de camadas.
+func debug_ordem() -> Array:
+	if _ordem_camadas.is_empty():
+		_ordem_camadas = ORDEM_PADRAO.duplicate()
+	return _ordem_camadas
+
+func _slot_de(nome: String) -> String:
+	return "personagem" if nome.begins_with("personagem") else nome
+
+# d = +1 sobe uma posição (para a frente), d = -1 desce uma (para trás).
+func debug_mover_ordem(nome: String, d: int) -> void:
+	var o: Array = debug_ordem()
+	var slot: String = _slot_de(nome)
+	var i: int = o.find(slot)
+	if i < 0:
+		return
+	var j: int = clampi(i + d, 0, o.size() - 1)
+	o.remove_at(i)
+	o.insert(j, slot)
+
+func debug_textura(nome: String) -> Texture2D:
+	return _quadro_camada(nome)
 
 func debug_rect(nome: String) -> Rect2:
 	var t: Texture2D = _quadro_camada(nome)
@@ -518,7 +628,7 @@ func _draw() -> void:
 			_desenhar_entrada(e)
 		_desenhar_carrossel()
 		_desenhar_disco()
-		if bool(_config().debug_hitboxes):
+		if bool(_config().debug_fps_camadas) and _overlay == null:
 			_desenhar_debug_camadas()
 	if aviso_t > 0:
 		draw_string(ThemeDB.fallback_font, Vector2(0.0, 250.0), aviso, HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 14, Color(1.0, 0.85, 0.5))
@@ -891,7 +1001,7 @@ func _layout_principal(lista: Array) -> void:
 	var n: int = filhos.size()
 	if n > 0:
 		var x: float = VIEW_W * 0.5 - SUB_W * 0.5
-		var topo: float = ICON_Y - 64.0 - float(n) * SUB_H - float(n - 1) * SUB_GAP
+		var topo: float = ICON_Y - 52.0 - float(n) * SUB_H - float(n - 1) * SUB_GAP
 		for j in range(n):
 			var it: Dictionary = filhos[j]
 			var r := Rect2(x, topo + float(j) * (SUB_H + SUB_GAP), SUB_W, SUB_H)
@@ -1178,6 +1288,11 @@ func _executar(item: Dictionary) -> void:
 			# Todo modo que leva a uma luta passa antes pela seleção de personagens.
 			_som("menu_confirma")
 			_navegacao().ir_para_selecao(acao)
+		"importar", "apagar":
+			_som("menu_confirma")
+			TelaExportar.modo = acao
+			TelaExportar.voltar_aba = aba
+			_navegacao().ir_para_exportar()
 		"criar", "editar":
 			if (ResourceLoader.exists(CENA_EDITOR) or FileAccess.file_exists(CENA_EDITOR) or FileAccess.file_exists(CENA_EDITOR + ".remap")):
 				_som("menu_confirma")
