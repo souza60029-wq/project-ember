@@ -13,7 +13,7 @@ const Glifos = preload("res://engine/nucleo/Glifos.gd")
 
 const VIEW_W := 960.0
 const VIEW_H := 540.0
-const CATS := ["cfg_jogo", "cfg_tela", "cfg_controles", "cfg_musica"]
+const CATS := ["cfg_jogo", "cfg_tela", "cfg_controles", "cfg_musica", "cfg_debug"]
 const VIS_SUB: int = 9
 const MODULO_DEBUG := "res://engine/debug/DebugCamadas.gd"
 const R_CATS := Rect2(28.0, 104.0, 220.0, 300.0)
@@ -91,10 +91,6 @@ func _linhas() -> Array:
 	match _cat:
 		0:
 			r.append({"id": "idioma", "tipo": "escolha", "rotulo": _t("opt_idioma"), "valor": _t("idioma_" + str(cfg.idioma))})
-			r.append({"id": "debug", "tipo": "escolha", "rotulo": _t("opt_debug"), "valor": _lig(bool(cfg.debug_hitboxes))})
-			# Ferramenta de debug (aparece só se a pasta engine/debug/ existir; apague-a na versão final).
-			if (ResourceLoader.exists(MODULO_DEBUG) or FileAccess.file_exists(MODULO_DEBUG) or FileAccess.file_exists(MODULO_DEBUG + ".remap")):
-				r.append({"id": "camadas", "tipo": "acao", "rotulo": _t("opt_camadas_debug"), "valor": ""})
 		1:
 			r.append({"id": "rotacao", "tipo": "escolha", "rotulo": _t("opt_rotacao"), "valor": _t("rot_" + str(cfg.rotacao))})
 			r.append({"id": "hud", "tipo": "escolha", "rotulo": _t("opt_hud"), "valor": _t("hud_" + str(cfg.hud_modo))})
@@ -109,6 +105,13 @@ func _linhas() -> Array:
 			r.append({"id": "mus_luta", "tipo": "escolha", "rotulo": _t("opt_mus_luta"), "valor": _lig(bool(cfg.musica_luta_ligada))})
 			r.append({"id": "sons_luta", "tipo": "escolha", "rotulo": _t("opt_sons_luta"), "valor": _lig(bool(cfg.sons_luta_ligados))})
 			r.append({"id": "mus_banidas", "tipo": "acao", "rotulo": _t("opt_mus_banidas"), "valor": ""})
+		4:
+			r.append({"id": "debug", "tipo": "escolha", "rotulo": _t("opt_debug"), "valor": _lig(bool(cfg.debug_hitboxes))})
+			r.append({"id": "fps_camadas", "tipo": "escolha", "rotulo": _t("opt_fps_camadas"), "valor": _lig(bool(cfg.debug_fps_camadas))})
+			r.append({"id": "shader_fundo", "tipo": "escolha", "rotulo": _t("opt_shader_fundo"), "valor": _lig(bool(cfg.shader_fundo))})
+			# Editor de camadas (aparece só se a pasta engine/debug/ existir; apague-a na versão final).
+			if (ResourceLoader.exists(MODULO_DEBUG) or FileAccess.file_exists(MODULO_DEBUG) or FileAccess.file_exists(MODULO_DEBUG + ".remap")):
+				r.append({"id": "camadas", "tipo": "acao", "rotulo": _t("opt_camadas_debug"), "valor": ""})
 	return r
 
 
@@ -150,6 +153,10 @@ func _mudar(d: int, dev: int) -> void:
 			cfg.definir_idioma(_ciclo(cfg.IDIOMAS, str(cfg.idioma), d))
 		"debug":
 			cfg.definir_debug(not bool(cfg.debug_hitboxes))
+		"fps_camadas":
+			cfg.definir_fps_camadas(not bool(cfg.debug_fps_camadas))
+		"shader_fundo":
+			cfg.definir_shader_fundo(not bool(cfg.shader_fundo))
 		"rotacao":
 			cfg.definir_rotacao(_ciclo(cfg.ROTACOES, str(cfg.rotacao), d))
 		"hud":

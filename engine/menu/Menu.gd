@@ -10,6 +10,12 @@ extends Control
 const Glifos = preload("res://engine/nucleo/Glifos.gd")
 const Configuracoes = preload("res://engine/config/Configuracoes.gd")
 const TelaExportar = preload("res://engine/exportar/TelaExportar.gd")
+const FundoHistoria = preload("res://engine/menu/FundoHistoria.gd")
+const SHADER_LUZ := "res://ui/shaders/luz_vermelha.gdshader"
+const SHADER_FAIXA := "res://ui/shaders/faixa.gdshader"
+# Faixa tombada atrás do personagem do menu (centro e meio tamanho, em px de 960x540).
+const FAIXA_CENTRO := Vector2(836.0, 270.0)
+const FAIXA_METADE := Vector2(150.0, 340.0)
 const CENA_EDITOR := "res://engine/editor/EditorPersonagem.tscn"
 const PASTA_MENU := "res://ui/menu/"
 const VIEW_W := 960.0
@@ -140,6 +146,9 @@ var _ajustes_camadas: Dictionary = {}
 # Ordem de desenho das camadas, de trás para frente ("personagem" = a arte do menu atual).
 const ORDEM_PADRAO := ["camada1_fundo", "camada2_grade", "camada2_movimento", "personagem", "camada4_borda_topo", "camada4_borda_baixo"]
 var _ordem_camadas: Array = []
+var _fundo_novo: Control = null
+var _luz: ColorRect = null
+var _faixa: ColorRect = null
 var _variantes_cache: Dictionary = {}
 var _sorteio: Dictionary = {}
 var _arte_nome: String = ""
@@ -177,6 +186,53 @@ func _t(chave: String) -> String:
 		return str(par[0]) if str(_config().idioma) == "pt" else str(par[1])
 	return s
 
+# ---------- Fundo novo: camadas animadas + shader de luz + faixa tombada ----------
+# Os nós ficam "atrás do pai" (show_behind_parent): são desenhados antes do conteúdo do Menu.
+# Ordem: fundo -> passe de luz (só sobre o fundo) -> faixa -> personagem e interface do Menu.
+
+func _criar_fundo() -> void:
+	var f: Control = FundoHistoria.new()
+	f.show_behind_parent = true
+	add_child(f)
+	if not f.existe():
+		f.queue_free()
+		return
+	_fundo_novo = f
+	_luz = _nodo_shader(SHADER_LUZ)
+	_faixa = _nodo_shader(SHADER_FAIXA)
+	if _faixa != null:
+		var m: ShaderMaterial = _faixa.material as ShaderMaterial
+		m.set_shader_parameter("u_center", FAIXA_CENTRO)
+		m.set_shader_parameter("u_half", FAIXA_METADE)
+	_config().fundo_mudou.connect(_aplicar_shader_fundo)
+	_aplicar_shader_fundo()
+
+
+func _nodo_shader(caminho: String) -> ColorRect:
+	if not (ResourceLoader.exists(caminho) or FileAccess.file_exists(caminho)):
+		return null
+	var sh: Shader = load(caminho) as Shader
+	if sh == null:
+		return null
+	var r := ColorRect.new()
+	r.position = Vector2.ZERO
+	r.size = Vector2(VIEW_W, VIEW_H)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.show_behind_parent = true
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	r.material = m
+	add_child(r)
+	return r
+
+
+# Shader ligado: o fundo fica sem cor (dessaturado) e a luz vermelha vai por cima.
+# Desligado: o fundo aparece com as cores originais. A faixa nunca é afetada.
+func _aplicar_shader_fundo() -> void:
+	if _luz != null:
+		_luz.visible = bool(_config().shader_fundo)
+
+
 # ---------- Ciclo de vida ----------
 
 func _ready() -> void:
@@ -185,6 +241,7 @@ func _ready() -> void:
 	if TelaExportar.voltar_aba >= 0:
 		aba = clampi(TelaExportar.voltar_aba, 0, ABAS.size() - 1)
 		TelaExportar.voltar_aba = -1
+	_criar_fundo()
 	_pos = float(aba)
 	_nome_faixa = str(_audio().nome_faixa)
 	_audio().faixa_mudou.connect(_on_faixa)
@@ -458,6 +515,8 @@ func _desenhar_camadas() -> void:
 		_desenhar_layer("camada4_borda", _quadro_camada("camada4_borda"))
 
 func _desenhar_slot(slot: String) -> void:
+	if _fundo_novo != null and (slot == "camada1_fundo" or slot == "camada2_grade" or slot == "camada2_movimento"):
+		return
 	match slot:
 		"camada1_fundo":
 			var fundo: Texture2D = _quadro_camada("camada1_fundo")
@@ -508,6 +567,8 @@ func debug_camadas() -> Array:
 	var r: Array = []
 	for slot in debug_ordem():
 		var n: String = str(slot)
+		if _fundo_novo != null and (n == "camada1_fundo" or n == "camada2_grade" or n == "camada2_movimento"):
+			continue
 		if n == "personagem":
 			if _arte_nome != "" and not _frames_camada(_arte_nome).is_empty():
 				r.append(_arte_nome)
@@ -567,7 +628,7 @@ func _draw() -> void:
 			_desenhar_entrada(e)
 		_desenhar_carrossel()
 		_desenhar_disco()
-		if bool(_config().debug_hitboxes) and _overlay == null:
+		if bool(_config().debug_fps_camadas) and _overlay == null:
 			_desenhar_debug_camadas()
 	if aviso_t > 0:
 		draw_string(ThemeDB.fallback_font, Vector2(0.0, 250.0), aviso, HORIZONTAL_ALIGNMENT_CENTER, VIEW_W, 14, Color(1.0, 0.85, 0.5))

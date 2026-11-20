@@ -15,13 +15,11 @@ const PASTA_UI := "res://ui/selecao/"
 const VIEW_W := 960.0
 const VIEW_H := 540.0
 # Cards em retângulos na vertical, agrupados de 3 em 3 (os trios do KOF).
-const CARD_W := 50.0
-const CARD_H := 92.0
-const CARD_FOLGA := 4.0
-const GRUPO_FOLGA := 18.0
-const COLUNAS := 6
-const TOPO_GRADE := 104.0
-const PASSO_LINHA := 104.0
+const CARD_W := 62.0
+const CARD_H := 62.0
+const CARD_FOLGA := 6.0
+const COLUNAS := 10
+const BASE_GRADE := 468.0   # borda de baixo da grade de cards (os cards ficam embaixo, como no Strive)
 const LIMIAR_STICK := 0.6
 const COR_P1 := Color(0.3, 1.0, 0.4)
 const COR_P2 := Color(0.3, 0.6, 1.0)
@@ -66,26 +64,33 @@ func _process(_d: float) -> void:
 
 # ---------- Geometria ----------
 
+func _linhas_grade() -> int:
+	return int(ceil(float(maxi(_itens.size(), 1)) / float(_cols)))
+
+
+# Com mais de 3 linhas, os cards encolhem para a grade caber.
 func _escala() -> float:
-	var linhas: int = int(ceil(float(maxi(_itens.size(), 1)) / float(_cols)))
-	return clampf(3.0 / float(linhas), 0.55, 1.0)
+	return clampf(3.0 / float(_linhas_grade()), 0.6, 1.0)
 
 
 func _tam_card() -> Vector2:
 	return Vector2(CARD_W, CARD_H) * _escala()
 
 
+func _topo_grade() -> float:
+	var e: float = _escala()
+	return BASE_GRADE - float(_linhas_grade()) * (CARD_H + CARD_FOLGA) * e + CARD_FOLGA * e
+
+
 func _centro(i: int) -> Vector2:
 	var e: float = _escala()
-	var lg: float = 3.0 * CARD_W * e + 2.0 * CARD_FOLGA * e
-	var total: float = 2.0 * lg + GRUPO_FOLGA
-	var x0: float = (VIEW_W - total) * 0.5
-	var col: int = i % _cols
 	var linha: int = i / _cols
-	var grupo: int = col / 3
-	var dentro: int = col % 3
-	var x: float = x0 + float(grupo) * (lg + GRUPO_FOLGA) + float(dentro) * (CARD_W + CARD_FOLGA) * e + CARD_W * e * 0.5
-	var y: float = TOPO_GRADE + float(linha) * PASSO_LINHA * e + CARD_H * e * 0.5
+	var col: int = i % _cols
+	var na_linha: int = mini(_cols, _itens.size() - linha * _cols)
+	var larg: float = float(na_linha) * (CARD_W + CARD_FOLGA) * e - CARD_FOLGA * e
+	var x0: float = (VIEW_W - larg) * 0.5
+	var x: float = x0 + float(col) * (CARD_W + CARD_FOLGA) * e + CARD_W * e * 0.5
+	var y: float = _topo_grade() + float(linha) * (CARD_H + CARD_FOLGA) * e + CARD_H * e * 0.5
 	return Vector2(x, y)
 
 
@@ -109,7 +114,6 @@ func _draw() -> void:
 	else:
 		_arte_lado(true)
 		_arte_lado(false)
-		_placas_trios()
 		for i in range(_itens.size()):
 			_desenhar_card(i)
 		_desenhar_cursores()
@@ -156,7 +160,7 @@ func _desenhar_card(i: int) -> void:
 			src.position.x = (ts.x - src.size.x) * 0.5
 		else:
 			src.size.y = ts.x / alvo
-			src.position.y = (ts.y - src.size.y) * 0.5
+			src.position.y = (ts.y - src.size.y) * 0.12
 		draw_texture_rect_region(tex, r, src)
 	else:
 		draw_rect(r, Color(0.12, 0.08, 0.1, 0.95))
@@ -192,7 +196,7 @@ func _arte_lado(esquerda: bool) -> void:
 		idx = _escolha1 if _escolha1 >= 0 else (_cursor if _fase == 0 else -1)
 	else:
 		idx = _cursor if _fase == 1 else -1
-	var area := Rect2(10.0, 80.0, 250.0, 390.0) if esquerda else Rect2(700.0, 80.0, 250.0, 390.0)
+	var area := Rect2(10.0, 70.0, 300.0, 400.0) if esquerda else Rect2(650.0, 70.0, 300.0, 400.0)
 	if idx < 0:
 		return
 	var item: Dictionary = _itens[idx]
@@ -216,8 +220,9 @@ func _nomes() -> void:
 		n1 = str((_itens[_cursor]["personagem"] as Dictionary)["nome"])
 	if _fase == 1:
 		n2 = str((_itens[_cursor]["personagem"] as Dictionary)["nome"])
-	_barra_nome(Rect2(20.0, 440.0, 240.0, 26.0), n1, COR_P1)
-	_barra_nome(Rect2(700.0, 440.0, 240.0, 26.0), n2, COR_P2)
+	var yn: float = _topo_grade() - 44.0
+	_barra_nome(Rect2(20.0, yn, 260.0, 30.0), n1, COR_P1)
+	_barra_nome(Rect2(680.0, yn, 260.0, 30.0), n2, COR_P2)
 
 
 func _barra_nome(r: Rect2, nome: String, cor: Color) -> void:

@@ -13,6 +13,7 @@ signal mapa_mudou
 signal hud_mudou
 signal audio_mudou
 signal camadas_debug_pedido
+signal fundo_mudou
 
 const ARQUIVO := "user://config.json"
 const MODOS := ["automatico", "touch", "controle"]
@@ -31,6 +32,8 @@ var idioma := "pt"
 var em_luta := false
 # Modo debug: mostra hitboxes, hurtboxes e dados de combate. Padrão: desligado.
 var debug_hitboxes := false
+var debug_fps_camadas := false
+var shader_fundo := true   # fundo dessaturado + luz vermelha por cima (opção de debug)
 # Rotação da tela: automática (segue o aparelho), paisagem ou paisagem invertida.
 var rotacao := "automatica"
 # HUD do sistema: desligado, retângulo ou quadrado (arrastável). Posição salva.
@@ -113,6 +116,21 @@ func definir_debug(ligado: bool) -> void:
 	debug_hitboxes = ligado
 	_salvar()
 	debug_mudou.emit(ligado)
+
+
+func definir_fps_camadas(ligado: bool) -> void:
+	if ligado == debug_fps_camadas:
+		return
+	debug_fps_camadas = ligado
+	_salvar()
+
+
+func definir_shader_fundo(ligado: bool) -> void:
+	if ligado == shader_fundo:
+		return
+	shader_fundo = ligado
+	_salvar()
+	fundo_mudou.emit()
 
 
 func definir_rotacao(r: String) -> void:
@@ -305,6 +323,8 @@ func _carregar() -> void:
 	if IDIOMAS.has(i):
 		idioma = i
 	debug_hitboxes = bool(dados.get("debug", false))
+	debug_fps_camadas = bool(dados.get("fps_camadas", false))
+	shader_fundo = bool(dados.get("shader_fundo", true))
 	musica_menu_ligada = bool(dados.get("mus_menu", true))
 	musica_luta_ligada = bool(dados.get("mus_luta", true))
 	sons_luta_ligados = bool(dados.get("sons_luta", true))
@@ -335,4 +355,4 @@ func _carregar() -> void:
 func _salvar() -> void:
 	var f := FileAccess.open(ARQUIVO, FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"modo": modo_escolhido, "idioma": idioma, "debug": debug_hitboxes, "rotacao": rotacao, "mus_menu": musica_menu_ligada, "mus_luta": musica_luta_ligada, "sons_luta": sons_luta_ligados, "banidas": musicas_banidas, "hud": hud_modo, "hud_pos": [hud_pos.x, hud_pos.y], "mapas": {"1": mapas[1], "2": mapas[2]}}))
+		f.store_string(JSON.stringify({"modo": modo_escolhido, "idioma": idioma, "debug": debug_hitboxes, "fps_camadas": debug_fps_camadas, "shader_fundo": shader_fundo, "rotacao": rotacao, "mus_menu": musica_menu_ligada, "mus_luta": musica_luta_ligada, "sons_luta": sons_luta_ligados, "banidas": musicas_banidas, "hud": hud_modo, "hud_pos": [hud_pos.x, hud_pos.y], "mapas": {"1": mapas[1], "2": mapas[2]}}))
