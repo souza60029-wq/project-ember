@@ -1,7 +1,7 @@
 extends Node
 
 # Textos do motor: menu, configurações, título e botões fixos.
-# Cada chave tem português (pt) e inglês (en)
+# Cada chave tem português (pt) e inglês (en).
 
 const TABELA := {
 	"menu_multiplayer": {"pt": "Multiplayer", "en": "Multiplayer"},

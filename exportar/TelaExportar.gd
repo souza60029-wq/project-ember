@@ -4,7 +4,7 @@ extends Control
 # modo "importar": traz um personagem do Forja (arquivo .ember) para o jogo.
 #   - "Escolher arquivo..." abre o app Arquivos do iPhone;
 #   - ou toque num .ember que você colocou em Arquivos > No meu iPhone > Ember > importar.
-# modo "apagar": lista os personagens importados; a lixeira apaga (toque duas vezes).
+# modo "apagar": lista todos os personagens, menos os 2 bonecos de treino; a lixeira apaga (toque duas vezes).
 # Autoloads são acessados por get_node, para o script compilar sem eles.
 
 const Pacote = preload("res://engine/formato/Pacote.gd")
@@ -87,8 +87,8 @@ func _carregar() -> void:
 				_itens.append({"tipo": "arquivo", "titulo": str(f), "sub": "%d KB" % kb, "dado": PASTA_IMPORTAR + str(f)})
 	else:
 		for it in _catalogo().lista():
-			if str(it["origem"]) == "jogo":
-				continue
+			if _catalogo().eh_protegido(str(it["id"])):
+				continue   # os bonecos de treino não podem ser apagados
 			_itens.append({"tipo": "personagem", "titulo": str(it["nome"]), "sub": "", "dado": it})
 	_rolagem = clampf(_rolagem, 0.0, _max_rolagem())
 
@@ -225,21 +225,11 @@ func _apagar(i: int) -> void:
 		return
 	var it: Dictionary = _itens[i]["dado"]
 	var nome: String = str(it["nome"])
-	_remover_pasta(str(it["pasta"]))
-	_catalogo().recarregar()
-	_avisar("Apagado: " + nome)
+	if _catalogo().apagar(str(it["id"])):
+		_avisar("Apagado: " + nome)
+	else:
+		_avisar("Nao foi possivel apagar " + nome)
 	_carregar()
-
-
-func _remover_pasta(pasta: String) -> void:
-	var dir := DirAccess.open(pasta)
-	if dir == null:
-		return
-	for f in dir.get_files():
-		dir.remove(f)
-	for d in dir.get_directories():
-		_remover_pasta(pasta.path_join(d) + "/")
-	DirAccess.remove_absolute(pasta)
 
 
 # ---------- desenho ----------

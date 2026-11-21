@@ -147,7 +147,7 @@ func _aplicar(p, item: Dictionary, lado: int) -> void:
 		nome = str(per["nome"])
 		id = str(item["id"])
 		p.definir_golpes(per["golpes"])
-		p.definir_escala(float(per.get("altura_px", Formato.ALTURA_PADRAO)) / Personagem.CORPO_ALTURA)
+		p.definir_escala(float(per.get("altura_px", Formato.ALTURA_PADRAO)) / Personagem.CORPO_ALTURA * Personagem.TAMANHO_GERAL)
 	if lado == 1:
 		dados1 = per
 		pasta1 = pasta
@@ -207,7 +207,7 @@ func _desenhar_rastros() -> void:
 		var a: float = clampf(float(d["t"]) / RASTRO_SEG, 0.0, 1.0) * 0.7
 		var tex: Texture2D = f["tex"]
 		if tex != null:
-			Sprites.desenhar(self, tex, f["pos"], bool(f["direita"]), Color(1.0, 0.2, 0.2, a))
+			Sprites.desenhar(self, tex, f["pos"], bool(f["direita"]), Color(1.0, 0.2, 0.2, a), Personagem.TAMANHO_GERAL)
 		else:
 			draw_rect(f["rect"], Color(1.0, 0.2, 0.2, a * 0.7))
 
@@ -472,7 +472,7 @@ func _separar_corpos() -> void:
 	if p1.estado == Personagem.Estado.ESQUIVANDO or p2.estado == Personagem.Estado.ESQUIVANDO:
 		return
 	var d: float = p2.pos.x - p1.pos.x
-	var falta: float = Personagem.CORPO_LARGURA - absf(d)
+	var falta: float = (p1.largura_corpo() + p2.largura_corpo()) * 0.5 - absf(d)
 	if falta <= 0.0:
 		return
 	var s: float = 1.0 if d >= 0.0 else -1.0
@@ -550,7 +550,7 @@ func _desenhar_personagem(p, base: Color, dados: Dictionary, pasta: String) -> v
 	# Flatline: o personagem inteiro pisca vermelho.
 	var pisca: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() / 70.0) if p.flatline else 0.0
 	if tex != null:
-		Sprites.desenhar(self, tex, p.pos, p.direita != (str(dados.get("olhando", "direita")) == "esquerda"), Color(1.0, 1.0 - 0.75 * pisca, 1.0 - 0.75 * pisca, alfa))
+		Sprites.desenhar(self, tex, p.pos, p.direita != (str(dados.get("olhando", "direita")) == "esquerda"), Color(1.0, 1.0 - 0.75 * pisca, 1.0 - 0.75 * pisca, alfa), Personagem.TAMANHO_GERAL)
 		return
 	# Sem sprite: caixa de cor no lugar do personagem.
 	var est: int = p.estado
